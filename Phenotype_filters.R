@@ -1,4 +1,4 @@
-## Packages
+## Packages####
 library(ggplot2)
 library(gridExtra)
 library(reshape2)
@@ -6,6 +6,7 @@ library(data.table)
 library(CMplot)
 library(Hmisc)
 library(cowplot)
+library(doParallel)
 
 ## Functions
 nei_fst_func <- function(pm,pf){((pm-pf)^2)/(4*((pm+pf)/2)*(1-((pm+pf)/2)))}
@@ -39,6 +40,12 @@ t.test.p_func <- function(m1,m2,se1,se2,n1,n2,m0=0,rho)
   names(dat) <- c("T_DEP_P")
   return(dat) 
 }
+
+InvTable = function(tb){
+  output = rep(names(tb), tb)
+  return(output)
+}
+
 
 dir <- "~/Dropbox/dropbox_work/data/biobank/"
 
@@ -172,7 +179,7 @@ bd$f.42032.0.0 <- as.Date(bd$f.42032.0.0)
 #setwd("/Users/fruz0001/Documents/biobank/")
 #write.table(bd,"pheno.txt",quote=F,row.names=F,sep="\t")
 
-## Filter samples based on a number of different criteria
+## Basic filters####
 
 #Keep only unrelated individuals
 bd1 <- subset(bd,f.22021.0.0=="No kinship found")
@@ -188,33 +195,22 @@ rm(bd3)
 #Remove aneuploid samples
 bd5 <- subset(bd4,is.na(f.22019.0.0))
 rm(bd4)
-
-## Write out sample-filtered phenotype file
 #write.table(bd5,"pheno_filtered_v1.txt",quote=F,row.names=F,sep="\t")
 #write.table(bd5[,c(1,1)],"indiv_filtered_v1.txt",quote=F,row.names=F,sep="\t",col.names=F)
 
 #Only keep individuals aged 45 and above 
 bd6 <- subset(bd5,f.21003.0.0>44)
+names(bd6)[1] <- "FID"
 rm(bd5)
-#write.table(bd6,"pheno_filtered_v2.txt",quote=F,row.names=F,sep="\t")
-#write.table(bd6[,c(1,1)],"indiv_filtered_v2.txt",quote=F,row.names=F,sep="\t",col.names=F)
-
-#Replicate first column, for input into bolt-lmm
-bd8 <- bd6[,c(1,1:ncol(bd6))]
-names(bd8)[1:2] <- c("FID","IID")
-rm(bd6)
 rm(bd)
-#Write out list of male and female ids
-#write.table(bd8[bd8$f.31.0.0=="Male",c(1,2)],paste0(dir,"ukb_phenotypes/list_of_male_ids_v2.txt"),quote=F,row.names=F,col.names=F,sep=" ")
-#write.table(bd8[bd8$f.31.0.0=="Female",c(1,2)],paste0(dir,"ukb_phenotypes/list_of_female_ids_v2.txt"),quote=F,row.names=F,col.names=F,sep=" ")
+#write.table(bd6,"pheno_filtered_v2.txt",quote=F,row.names=F,sep="\t")
+#write.table(bd6[,c(1,1)],"ukb_phenotypes_v3/indiv_filtered_v2.txt",quote=F,row.names=F,sep="\t",col.names=F)
 
-
-#Filter fitness data
-indiv <- read.table(paste0(dir,"ukb_phenotypes/indiv_filtered_v2.txt"))
+#Fitness filters####
+indiv <- read.table(paste0(dir,"ukb_phenotypes_v3/indiv_filtered_v2.txt"))
 names(indiv) <- c("FID","IID")
-indiv.extra <- merge(indiv,bd8[c("FID","f.31.0.0","f.22001.0.0","f.2405.0.0","f.2405.1.0","f.2405.2.0","f.2405.3.0","f.2734.0.0","f.2734.1.0","f.2734.2.0","f.2734.3.0")],by="FID",all.x=T)
-
-## Males, quality-filtering phenotypic data
+indiv.extra <- merge(indiv,bd6[c("FID","f.31.0.0","f.22001.0.0","f.2405.0.0","f.2405.1.0","f.2405.2.0","f.2405.3.0","f.2734.0.0","f.2734.1.0","f.2734.2.0","f.2734.3.0")],by="FID",all.x=T)
+## Males, quality-filtering fitness data
 indiv.extra.m <- subset(indiv.extra,f.31.0.0=="Male")
 #Maximum value among four sampling points
 indiv.extra.m$Maximum_value <- apply(indiv.extra.m[,c("f.2405.0.0","f.2405.1.0","f.2405.2.0","f.2405.3.0")],1,function(x)max(x,na.rm=T))
@@ -226,8 +222,7 @@ indiv.extra.m$Lost_children <- with(indiv.extra.m,ifelse((f.2405.3.0<f.2405.2.0)
 indiv.extra.m$f.2405.max <- as.numeric(with(indiv.extra.m,ifelse((is.na(Lost_children) | Lost_children=="No") & (is.na(Negative_value) | Negative_value=="No") & is.finite(Maximum_value),Maximum_value,"Bad")))
 #Implausible number of children
 indiv.extra.m$f.2405.definitive <- with(indiv.extra.m,ifelse(f.2405.max>=20,NA,f.2405.max))
-
-##Females, quality-filtering phenotypic data
+## Females, quality-filtering fitness data
 indiv.extra.f <- subset(indiv.extra,f.31.0.0=="Female")
 #Maximum value among four sampling points
 indiv.extra.f$Maximum_value <- apply(indiv.extra.f[,c("f.2734.0.0","f.2734.1.0","f.2734.2.0","f.2734.3.0")],1,function(x)max(x,na.rm=T))
@@ -240,6 +235,8 @@ indiv.extra.f$f.2734.max <- as.numeric(with(indiv.extra.f,ifelse((is.na(Lost_chi
 #Implausible number of children
 indiv.extra.f$f.2734.definitive <- with(indiv.extra.f,ifelse(f.2734.max>=20,NA,f.2734.max))
 
+#Observed data####
+
 #Phenotype file, excluding any individual with NA fitness
 indiv.extra.m2 <- indiv.extra.m[,c("FID","IID","f.31.0.0","f.22001.0.0","f.2405.definitive")]
 names(indiv.extra.m2)[5] <- "Number_of_children"
@@ -247,30 +244,48 @@ indiv.extra.f2 <- indiv.extra.f[,c("FID","IID","f.31.0.0","f.22001.0.0","f.2734.
 names(indiv.extra.f2)[5] <- "Number_of_children"
 indiv.extra2 <- rbind(indiv.extra.m2,indiv.extra.f2)
 indiv.extra2 <- indiv.extra2[order(indiv.extra2$FID),]
-bd9 <- merge(bd8,indiv.extra2[,c("FID","IID","Number_of_children")],by=c("FID","IID"),all.x=T)
+bd9 <- merge(bd6,indiv.extra2[,c("FID","IID","Number_of_children")],by=c("FID"),all.x=T)
 bd9 <- bd9[!is.na(bd9$Number_of_children),]
-#write.table(bd9,paste0(dir,"/ukb_phenotypes/pheno_filtered_v3.txt"),quote=F,row.names=F,sep="\t")
-#write.table(bd9[,c(1,1)],paste0(dir,"/ukb_phenotypes/indiv_filtered_v3.txt"),quote=F,row.names=F,sep="\t",col.names=F)
+#write.table(bd9,paste0(dir,"/ukb_phenotypes_v3/pheno_filtered_v3.txt"),quote=F,row.names=F,sep="\t")
+#write.table(bd9[,c(1,1)],paste0(dir,"/ukb_phenotypes_v3/indiv_filtered_v3.txt"),quote=F,row.names=F,sep="\t",col.names=F)
 
-#Phenotype file with with FID/IIDs for each sex
-write.table(indiv.extra3[c(1,2,4)],paste0(dir,"/ukb_phenotypes/indiv_filtered_v3_male_female_cluster.txt"),row.names = F,col.names=F,quote=F)
 
 #Phenotype file with FID/IIDs for each sex and number of children
 bd9$SexChildren <- paste0(bd9$f.31.0.0,bd9$Number_of_children)
-#write.table(bd9[,c("FID","IID","SexChildren")],paste0(dir,"ukb_phenotypes/indiv_filtered_v3_SexChildren_cluster.txt"),quote=F,row.names=F)
+#write.table(bd9[,c("FID","IID","SexChildren")],paste0(dir,"ukb_phenotypes_v3/indiv_filtered_v3_SexChildren_cluster.txt"),quote=F,row.names=F)
 
-#Replicate first column, for input into bolt-lmm
+
+#BOLT-LMM
+
+#Phenotype file, excluding any individual with NA fitness, for input in BOLT-LMM 
+# (white-space delimited, with only  relevant phenotypes for logistic regression analysis, i.e. Sex=f.31.0.0.numeric, Assessment centre=f.54.0.0, Age=f.21003.0.0, + 20 PCs)
+bd9$f.31.0.0.numeric <- ifelse(bd9$f.31.0.0=="Female",2,1)
+#Import principal components file
+pcs <- fread(paste0(dir,"/ukb_kinship_and_pca_v3/ukb52049_chrAUTO_sampleqc1_snpqc1b_maf_above0.01_artefacts_removed_v3.eigenvec"))
+names(pcs)[1] <- "FID"
+bd12 <- merge(bd9,pcs,all.x=T,by=c("FID","IID"))
+#write.table(bd12[,c("FID","IID","f.31.0.0.numeric","f.54.0.0","f.21003.0.0","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20")],paste0(dir,"/ukb_phenotypes_v3/pheno_filtered_v3_for_boltlmm.txt"),quote=F,row.names=F,sep=" ")
+#write.table(bd12[,c("FID","IID","f.31.0.0.numeric","f.54.0.0","f.21003.0.0","Number_of_children","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20")],paste0(dir,"/ukb_phenotypes_v3/pheno_filtered_v3_for_boltlmm_nchildren.txt"),quote=F,row.names=F,sep=" ")
+rm(bd12)
+
+#List of male and female individuals (with fitness data)
 bd10 <- bd9[,c(1,1:ncol(bd9))]
 names(bd10)[1:2] <- c("FID","IID")
 rm(bd9)
 #write.table(bd10[bd10$f.31.0.0=="Male",c(1,2)],paste0(dir,"ukb_phenotypes/list_of_male_ids_v3.txt"),quote=F,row.names=F,col.names=F,sep=" ")
 #write.table(bd10[bd10$f.31.0.0=="Female",c(1,2)],paste0(dir,"ukb_phenotypes/list_of_female_ids_v3.txt"),quote=F,row.names=F,col.names=F,sep=" ")
 
+#List of individuals without fitness data
+bd11 <- merge(bd6,indiv.extra2[,c("FID","IID","Number_of_children")],by=c("FID"),all.x=T)
+#write.table(bd11[is.na(bd11$Number_of_children),c("FID","IID")],paste0(dir,"/ukb_phenotypes_v3/indiv_without_LRS_v3.txt"),quote=F,row.names=F,col.names=F,sep=" ")
+rm(bd6)
 
-## Permuted number of children (sample number of children *within* each sex, once, without replacement)
-indiv3 <- read.table(paste0(dir,"/ukb_phenotypes/indiv_filtered_v3.txt"))
+
+## Permuted LRS####
+#(sample number of offspring *within* each sex, once, without replacement)
+indiv3 <- read.table(paste0(dir,"/ukb_phenotypes_v3/indiv_filtered_v3.txt"))
 names(indiv3) <- c("FID","IID")
-indiv.extra3 <- merge(indiv3,bd9[c("FID","f.31.0.0","f.22001.0.0","Number_of_children")],by="FID",all.x=T)
+indiv.extra3 <- merge(indiv3,bd10[c("FID","f.31.0.0","f.31.0.0.numeric","f.22001.0.0","f.54.0.0","f.21003.0.0","Number_of_children")],by="FID",all.x=T)
 indiv.extra3.m <- subset(indiv.extra3,f.31.0.0=="Male")
 indiv.extra3.f <- subset(indiv.extra3,f.31.0.0=="Female")
 set.seed(123)
@@ -279,22 +294,37 @@ set.seed(123)
 indiv.extra3.f$Number_of_children_permuted <- sample(indiv.extra3.f$Number_of_children,replace=F,size = nrow(indiv.extra3.f))
 
 ## Phenotype file with FID/IIDs for each sex and number of children, permuted
-indiv.extra3 <- rbivnd(indiv.extra3.m,indiv.extra3.f)
+indiv.extra3 <- rbind(indiv.extra3.m,indiv.extra3.f)
 indiv.extra3 <- indiv.extra3[order(indiv.extra3$FID),]
 indiv.extra3$SexChildrenPerm <- paste0(indiv.extra3$f.31.0.0,indiv.extra3$Number_of_children_permuted)
-#write.table(indiv.extra3[,c("FID","IID","SexChildrenPerm")],paste0(dir,"/ukb_phenotypes/indiv_filtered_v3_SexChildrenPerm_cluster.txt"),quote=F,row.names=F)
+#write.table(indiv.extra3[,c("FID","IID","SexChildrenPerm")],paste0(dir,"/ukb_phenotypes_v3/indiv_filtered_v3_SexChildrenPerm_cluster.txt"),quote=F,row.names=F)
+
+##BOLT-LMM
+#Phenotype file, excluding any individual with NA fitness, for input in BOLT-LMM 
+# (white-space delimited, with only relevant phenotypes for GWAS analysis, i.e. Sex=f.31.0.0.numeric, Assessment centre=f.54.0.0, Age=f.21003.0.0, Offspring=Number_of_children, PermutedOffspring=Number_of_children_permuted, + 20 PCs)
+indiv.extra3.bolt <- merge(indiv.extra3,pcs,all.x=T,by=c("FID","IID"))
+#write.table(indiv.extra3.bolt[,c("FID","IID","f.31.0.0.numeric","f.54.0.0","f.21003.0.0","Number_of_children","Number_of_children_permuted","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20")],paste0(dir,"ukb_phenotypes_v3/pheno_filtered_v3_perm1_for_boltlmm_nchildren.txt"),quote=F,row.names=F,sep=" ")
 
 
-#Permuted sexes (sample sex, once, without replacement)
+
+
+
+## Permuted sex####
+#(sample sex, once, without replacement)
 set.seed(123)
 indiv.extra3$SexPerm2 <- sample(indiv.extra3$f.31.0.0,replace=F,size = nrow(indiv.extra3))
 
-#Phenotype file with FID/IIDs for each permuted sex
-write.table(indiv.extra3[c("FID","IID","SexPerm2")],paste0(dir,"/ukb_phenotypes/indiv_filtered_v3_male_female_cluster_perm2.txt"),row.names = F,col.names=F,quote=F)
-
 #Phenotype file with FID/IIDs for each permuted sex and number of children
 indiv.extra3$SexChildrenPerm2 <- paste0(indiv.extra3$SexPerm2,indiv.extra3$Number_of_children)
-#write.table(indiv.extra3[,c("FID","IID","SexChildrenPerm2")],paste0(dir,"ukb_phenotypes/indiv_filtered_v3_SexChildrenPerm2_cluster.txt"),quote=F,row.names=F)
+#write.table(indiv.extra3[,c("FID","IID","SexChildrenPerm2")],paste0(dir,"ukb_phenotypes_v3/indiv_filtered_v3_SexChildrenPerm2_cluster.txt"),quote=F,row.names=F)
+
+##BOLT-LMM
+#Phenotype file, excluding any individual with NA fitness, for input in BOLT-LMM 
+# (white-space delimited, with only relevant phenotypes for logistic regression analysis, i.e. Sex=f.31.0.0.numeric, Assessment centre=f.54.0.0, Age=f.21003.0.0, PermutedSex=SexPerm2.numeric, + 20 PCs)
+indiv.extra3$SexPerm2.numeric <- ifelse(indiv.extra3$SexPerm2=="Female",2,1)
+indiv.extra3.bolt2 <- merge(indiv.extra3,pcs,all.x=T,by=c("FID","IID"))
+#write.table(indiv.extra3.bolt2[,c("FID","IID","f.31.0.0.numeric","f.54.0.0","f.21003.0.0","SexPerm2.numeric","PC1","PC2","PC3","PC4","PC5","PC6","PC7","PC8","PC9","PC10","PC11","PC12","PC13","PC14","PC15","PC16","PC17","PC18","PC19","PC20")],paste0(dir,"ukb_phenotypes_v3/pheno_filtered_v3_perm2_for_boltlmm.txt"),quote=F,row.names=F,sep=" ")
+
 
 
 
