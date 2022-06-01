@@ -1,0 +1,1273 @@
+## Packages####
+library(ggplot2)
+library(gridExtra)
+library(reshape2)
+library(data.table)
+library(CMplot)
+library(Hmisc)
+library(cowplot)
+library(doParallel)
+
+## Functions
+nei_fst_func <- function(pm,pf){((pm-pf)^2)/(4*((pm+pf)/2)*(1-((pm+pf)/2)))}
+
+geno_to_afreq_func <- function(hom_ref_ct,het_ct,hom_alt_ct){
+  ((het_ct*0.5)+hom_alt_ct)/(hom_ref_ct+het_ct+hom_alt_ct)
+}
+geno_to_afreq_haploid_func <- function(ref_ct,alt_ct){
+  alt_ct/(ref_ct+alt_ct)
+}
+
+fis_func_one_sex_only <- function(p,pAa){ ( pAa/(2*p*(1-p)) ) - 1 }
+fis_func <- function(pm,pf,pAa){ ( pAa/(2*((pm+pf)/2)*(1-((pm+pf)/2))) ) - 1 }
+
+bt <- function(x,n,p) {binom.test(x,n,p, alternative = c("less"))$p.value}
+
+t.test.p_func <- function(m1,m2,se1,se2,n1,n2,m0=0,rho)
+{
+  #se_denom <- sqrt(  se1^2 + se2^2 )
+  se_dep_denom <- sqrt( se1^2 + se2^2 - ( 2 * rho * se1 * se2 ) )
+  
+  #welch-satterthwaite df
+  df <- ( (se1^2 + se2^2)^2 )/( (se1^2)/(n1-1) + (se2^2)/(n2-1) )
+     
+  #t <- (m1-m2-m0)/se_denom
+  t_dep <- (m1-m2-m0)/se_dep_denom
+  
+  #2*pt(abs(t),df,lower.tail = F)
+  
+  dat <- c(2*pt(abs(t_dep),df,lower.tail = F))   
+  names(dat) <- c("T_DEP_P")
+  return(dat) 
+}
+
+InvTable = function(tb){
+  output = rep(names(tb), tb)
+  return(output)
+}
+
+
+dir <- "~/Dropbox/dropbox_work/data/biobank/"
+
+
+#Plots:####
+
+# pf ~ pm####
+ggplot(mf.frqs,aes(x=p_M_VIABILITY,y=p_F_VIABILITY))+
+  geom_point(size=0.1,alpha=0.5,col="darkorange")+
+  theme_classic()+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  xlab(expression(hat(p[m])))+
+  ylab(expression(hat(p[f])))+
+  geom_abline(slope=1,linetype=3)
+
+
+# p'f ~ p'm####
+ggplot(mf.frqs,aes(x=(1-p_M),y=(1-p_F)))+
+  geom_point(size=0.1,alpha=0.5,col="purple")+
+  theme_classic()+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  xlab(expression(hat(p[m])~"'"))+
+  ylab(expression(hat(p[f])~"'"))+
+  geom_abline(slope=1,linetype=3)
+
+##Rho(Lst, adult Fst)####
+cor.test(mf.gwases$LST,mf.frqs$FST_VIABILITY,method="spearman")
+#rho=0.959 (p<0.001, imputed)
+tmp <- data.frame(mf.gwases$LST,mf.frqs$FST_VIABILITY_ST)
+names(tmp) <- c("LST","FST_VIABILITY")
+
+ggplot(tmp,aes(x=LST,y=FST_VIABILITY))+
+  geom_point( size=0.1,alpha=0.5 ,col="darkorange")+
+  theme_classic()+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  ylab(expression(Adult~hat(F)[ST]))+
+  xlab(expression(hat(L)[ST]))
+rm(tmp)
+
+#Rho(|t|,reprod Fst)####
+tmp <- data.frame(mf.gwases.lrs$ABS_T,mf.frqs$FST_REPRODUCTIVE_ST)
+names(tmp) <- c("ABS_T","FST_REPRODUCTIVE")
+
+ggplot(tmp,aes(x=ABS_T,y=FST_REPRODUCTIVE))+
+  geom_point( size=0.1,alpha=0.5 ,col="forestgreen")+
+  theme_classic()+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  ylab(expression(Reproductive~hat(F)[ST]))+
+  xlab(expression(abs(t)))
+rm(tmp)
+
+
+## Viability Fst_st, Quantile-proportion plot ####
+
+## Number of permuted and observed Fst values within each theoretical quantile of Fst
+quantiles.theory <- quantile(mf.frqs$RANDOM_CHISQ, prob = seq(0, 1, length = 101), type = 1)
+quantiles.theory[1] <- 0
+quantiles.theory[101] <- 10^6
+
+quantiles.perm <- vector("numeric")
+quantiles.obs <- vector("numeric")
+for (i in 1:100){
+  quantiles.perm[i] <- sum(mf.frqs$FST_VIABILITY_PERM2_ST>quantiles.theory[i] & mf.frqs$FST_VIABILITY_PERM2_ST<=quantiles.theory[(i+1)])/nrow(mf.frqs)
+  quantiles.obs[i] <- sum(mf.frqs$FST_VIABILITY_ST>quantiles.theory[i] & mf.frqs$FST_VIABILITY_ST<=quantiles.theory[(i+1)])/nrow(mf.frqs)
+  print(i)
+}
+dd.quantiles <- data.frame(c(quantiles.perm,quantiles.obs))
+dd.quantiles$Type <- factor(c(rep("Permuted",100),rep("Observed",100)))
+dd.quantiles$Type <- factor(dd.quantiles$Type,levels=c("Permuted","Observed"))
+dd.quantiles$Quantile <- rep(c(1:100),2)
+names(dd.quantiles) <- c("Proportion","Type","Quantiles")
+dd.quantiles$Proportion <- dd.quantiles$Proportion*100
+
+fst_viab_qp_plot <- ggplot(dd.quantiles,aes(x=Quantiles,y=Proportion,col=Type,fill=Type))+
+  geom_point( size=3 )+
+  theme_classic()+
+  scale_fill_manual(values=c("darkgrey","darkorange"))+
+  scale_color_manual(values=c("darkgrey","darkorange"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.quantiles), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.quantiles), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  scale_y_continuous(breaks=seq(0,1.2, by=0.05), limits=c(0.95, 1.15))+
+  ylab(expression(Percentage~of~sites))+
+  xlab(expression(hat(F)[ST]~quantile~(theoretical~null)))+
+  geom_hline(yintercept=1,linetype="dashed")+
+  ggtitle(expression(Adult~hat(F)[ST])) 
+fst_viab_qp_plot
+
+## 1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=2,nrow=1000)
+mf.frqs.s <- mf.frqs[,c("FST_VIABILITY_ST","FST_VIABILITY_PERM2_ST","RANDOM_CHISQ")]
+set.seed(123)
+for (i in 1:1000){
+  boot <- sample(1:nrow(mf.frqs.s),replace=T)
+  diff.boots[i,1] <- mean(mf.frqs.s$FST_VIABILITY_ST[boot])-mean(mf.frqs.s$FST_VIABILITY_PERM2_ST[boot])
+  diff.boots[i,2] <- mean(mf.frqs.s$FST_VIABILITY_ST[boot])-mean(mf.frqs.s$RANDOM_CHISQ[boot])
+  print(i)
+}
+
+dd.boots.qp <- data.frame(melt(diff.boots))
+names(dd.boots.qp) <- c("Replicate","Type","Difference")
+dd.boots.qp$Type <- factor(dd.boots.qp$Type)
+levels(dd.boots.qp$Type) <- c("Permuted","Theory")
+
+ggplot(dd.boots.qp,aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("darkorange","darkorange"))+
+  scale_color_manual(values=c("darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20),plot.margin = unit(c(0.1,1,0.1,0.1), "cm"),strip.text = element_blank())+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~bar(hat(F)[ST])-Null~bar(hat(F)[ST])~(10^3~boot.~reps.)))+
+  ggtitle(expression(Adult~hat(F)[ST]))+
+  xlim(c(0,max(dd.boots.qp$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")+
+  facet_grid(Type~.,scale = "free")
+
+## Viability Fst_st, Manhattan plot ####
+
+#When there is no snp < 10% fdr
+#mf.frqs$CHROM <- as.factor(as.character(mf.frqs$CHROM))
+#mf.frqs <- mf.frqs[order(mf.frqs$CHROM,mf.frqs$POS),]
+par(mar = c(2, 5, 2, 2))
+CMplot(mf.frqs[,c("ID","CHROM","POS","FST_VIABILITY_P")],type="p",plot.type="m",col=c("lightgrey","darkgrey"),LOG10=TRUE,threshold.col=c("blue"),memo="",verbose=TRUE,width=16,height=6,cex=0.5,file.output=F,dpi=600,threshold=c(0.05/nrow(mf.frqs)),chr.labels = c(1:22))
+
+## Viability Fst_st, Fst ~ MAF####
+
+#Quantile proportion plot
+quantiles.theory <- quantile(mf.frqs$RANDOM_CHISQ, prob = seq(0, 1, length = 101), type = 1)
+quantiles.theory[1] <- 0
+quantiles.theory[101] <- 10^6
+
+maf.theory <- vector("numeric")
+maf.perm <- vector("numeric")
+maf.obs <- vector("numeric")
+for (i in 1:100){
+  maf.theory[i] <- mean(subset(mf.frqs,RANDOM_CHISQ>quantiles.theory[i] & RANDOM_CHISQ<=quantiles.theory[(i+1)])$MAF)
+  maf.perm[i] <- mean(subset(mf.frqs,FST_VIABILITY_PERM2_ST>quantiles.theory[i] & FST_VIABILITY_PERM2_ST<=quantiles.theory[(i+1)])$MAF_PERM2)
+  maf.obs[i] <- mean(subset(mf.frqs,FST_VIABILITY_ST>quantiles.theory[i] & FST_VIABILITY_ST<=quantiles.theory[(i+1)])$MAF)
+  print(i)
+}  
+
+dd.maf <- data.frame(c(maf.theory,maf.perm,maf.obs))
+dd.maf$Type <- factor(c(rep("Theory",100),rep("Permuted",100),rep("Observed",100)))
+dd.maf$Type <- factor(dd.maf$Type,levels=c("Theory","Permuted","Observed"))
+dd.maf$Quantile <- rep(c(1:100),3)
+names(dd.maf) <- c("MAF","Type","Quantiles")
+
+fst_viab_maf_plot <- ggplot(dd.maf,aes(x=Quantiles,y=MAF,col=Type,fill=Type))+
+  geom_point( size=3 )+
+  theme_classic()+
+  scale_color_manual(values=c("black","darkgrey","darkorange"))+
+  scale_fill_manual(values=c("black","darkgrey","darkorange"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.maf), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.maf), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  ylab(expression(Mean~MAF))+
+  xlab(expression(hat(F)[ST]~quantile))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.13, 0.16))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.15, 0.19))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.11, 0.15))+
+  ggtitle(expression(Adult~hat(F)[ST])) 
+fst_viab_maf_plot
+
+## 1,000 bootstraps
+nboot <- 1000
+## Adult Fst
+diff.boots <- matrix(data=NA,ncol=2,nrow=nboot)
+mf.frqs.s <- mf.frqs[,c("FST_VIABILITY_ST","FST_VIABILITY_PERM2_ST","RANDOM_CHISQ","MAF","MAF_PERM2")]
+set.seed(123)
+for (i in 1:nboot){
+  boot <- sample(1:nrow(mf.frqs.s),replace = T)
+  diff.boots[i,1] <- cor(mf.frqs$FST_VIABILITY_ST[boot],mf.frqs$MAF[boot],method="spearman")-cor(mf.frqs$FST_VIABILITY_PERM2_ST[boot],mf.frqs$MAF_PERM2[boot],method="spearman")
+  diff.boots[i,2] <- cor(mf.frqs$FST_VIABILITY_ST[boot],mf.frqs$MAF[boot],method="spearman")-cor(mf.frqs$RANDOM_CHISQ[boot],mf.frqs$MAF[boot],method="spearman")
+  print(i)
+}
+
+dd.boots.viability.cor <- data.frame(melt(diff.boots))
+names(dd.boots.viability.cor) <- c("Replicate","Type","Difference")
+dd.boots.viability.cor$Type <- as.factor(dd.boots.viability.cor$Type)
+levels(dd.boots.viability.cor$Type) <- c("Permuted","Theory")
+
+
+ggplot(dd.boots.viability.cor,aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("darkorange","darkorange"))+
+  scale_color_manual(values=c("darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20),strip.text = element_blank())+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~rho(hat(F)[ST],MAF)-Null~rho(hat(F)[ST],MAF)~(10^3~boot.~reps.)))+
+  ggtitle(expression(Adult~hat(F)[ST]))+
+  xlim(c(0,max(dd.boots.viability.cor$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")+
+  facet_grid(Type~.,scale = "free")
+
+
+sum(dd.boots.viability.cor$Difference<0)
+#p<0.001 (genotyped)
+
+
+
+## Gametic Fst_st, quantile-proportion plot####
+
+## Number of permuted and observed Fst values within each theoretical quantile of Fst
+quantiles.theory <- quantile(mf.frqs$RANDOM_CHISQ, prob = seq(0, 1, length = 101), type = 1)
+quantiles.theory[1] <- 0
+quantiles.theory[101] <- 10^6
+
+quantiles.perm <- vector("numeric")
+quantiles.obs <- vector("numeric")
+for (i in 1:100){
+  quantiles.perm[i] <- sum(mf.frqs$FST_GAMETIC_PERM2_ST>quantiles.theory[i] & mf.frqs$FST_GAMETIC_PERM2_ST<=quantiles.theory[(i+1)])/nrow(mf.frqs)
+  quantiles.obs[i] <- sum(mf.frqs$FST_GAMETIC_ST>quantiles.theory[i] & mf.frqs$FST_GAMETIC_ST<=quantiles.theory[(i+1)])/nrow(mf.frqs)
+  print(i)
+}
+dd.quantiles <- data.frame(c(quantiles.perm,quantiles.obs))
+dd.quantiles$Type <- factor(c(rep("Permuted",100),rep("Observed",100)))
+dd.quantiles$Type <- factor(dd.quantiles$Type,levels=c("Permuted","Observed"))
+dd.quantiles$Quantile <- rep(c(1:100),2)
+names(dd.quantiles) <- c("Proportion","Type","Quantiles")
+dd.quantiles$Proportion <- dd.quantiles$Proportion*100
+
+fst_gametic_qp_plot <- ggplot(dd.quantiles,aes(x=Quantiles,y=Proportion,col=Type,fill=Type))+
+  geom_point( size=3 )+ 
+  theme_classic()+
+  scale_fill_manual(values=c("darkgrey","purple"))+
+  scale_color_manual(values=c("darkgrey","purple"))+
+  geom_smooth(data=subset(dd.quantiles), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.quantiles), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  scale_y_continuous(breaks=seq(0,1.2, by=0.05), limits=c(0.95, 1.15))+
+  ylab(expression(Percentage~of~sites))+
+  xlab(expression(hat(F)[ST]~quantile~(theoretical~null)))+
+  geom_hline(yintercept=1,linetype="dashed")+
+  ggtitle(expression(Gametic~hat(F)[ST])) 
+fst_gametic_qp_plot
+
+##1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=2,nrow=1000)
+mf.frqs.s <- mf.frqs[,c("FST_GAMETIC_ST","FST_GAMETIC_PERM2_ST","RANDOM_CHISQ")]
+set.seed(123)
+for (i in 1:1000){
+  boot <- sample(1:nrow(mf.frqs.s),replace=T)
+  mf.frqs.s2 <- mf.frqs.s[boot,]
+  diff.boots[i,1:2] <- c(mean(mf.frqs.s2$FST_GAMETIC_ST)-mean(mf.frqs.s2$FST_GAMETIC_PERM2_ST),mean(mf.frqs.s2$FST_GAMETIC_ST)-mean(mf.frqs.s2$RANDOM_CHISQ))
+  print(i)
+}
+
+dd.boots.gametic.qp <- data.frame(melt(diff.boots))
+names(dd.boots.gametic.qp) <- c("Replicate","Type","Difference")
+dd.boots.gametic.qp$Type <- as.factor(dd.boots.gametic.qp$Type)
+levels(dd.boots.gametic.qp$Type) <- c("Permuted","Theory")
+
+ggplot(dd.boots.gametic.qp,aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("purple","purple"))+
+  scale_color_manual(values=c("darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20),plot.margin = unit(c(0.1,1,0.1,0.1), "cm"),strip.text=element_blank())+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~bar(hat(F)[ST])-Null~bar(hat(F)[ST])~(10^3~boot.~reps.)))+
+  ggtitle(expression(Gametic~hat(F)[ST]))+
+  xlim(c(0,max(dd.boots.gametic.qp$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")+
+  facet_grid(Type~.,scale = "free")
+
+
+## Gametic Fst_st, Manhattan plot####
+
+#When there is no snp < 10% fdr
+CMplot(mf.frqs[,c("ID","CHROM","POS","FST_GAMETIC_P")],type="p",plot.type="m",col=c("lightgrey","darkgrey"),LOG10=TRUE,threshold.col=c("blue"),memo="",verbose=TRUE,width=16,height=6,cex=0.5,file.output=F,dpi=600,threshold=c(0.05/nrow(mf.frqs)),chr.labels = c(1:22))
+
+
+#Gametic Fst_st ~ MAF####
+#Quantile proportion plot
+quantiles.theory <- quantile(mf.frqs$RANDOM_CHISQ, prob = seq(0, 1, length = 101), type = 1)
+quantiles.theory[1] <- 0
+quantiles.theory[101] <- 10^6
+
+maf.theory <- vector("numeric")
+maf.perm <- vector("numeric")
+maf.obs <- vector("numeric")
+for (i in 1:100){
+  maf.theory[i] <- mean(subset(mf.frqs,RANDOM_CHISQ>quantiles.theory[i] & RANDOM_CHISQ<=quantiles.theory[(i+1)])$MAF)
+  maf.perm[i] <- mean(subset(mf.frqs,FST_GAMETIC_PERM2_ST>quantiles.theory[i] & FST_GAMETIC_PERM2_ST<=quantiles.theory[(i+1)])$MAF_PERM2)
+  maf.obs[i] <- mean(subset(mf.frqs,FST_GAMETIC_ST>quantiles.theory[i] & FST_GAMETIC_ST<=quantiles.theory[(i+1)])$MAF)
+  print(i)
+}  
+dd.maf <- data.frame(c(maf.theory,maf.perm,maf.obs))
+dd.maf$Type <- factor(c(rep("Theory",100),rep("Permuted",100),rep("Observed",100)))
+dd.maf$Type <- factor(dd.maf$Type,levels=c("Theory","Permuted","Observed"))
+dd.maf$Quantile <- rep(c(1:100),3)
+names(dd.maf) <- c("MAF","Type","Quantiles")
+
+ggplot(subset(dd.maf,Type=="Observed"),aes(x=Quantiles,y=MAF,col=Type,fill=Type,shape=Type))+
+  geom_point(size=3)+
+  theme_classic()+
+  scale_color_manual(values=c("Theory"="black","Permuted"="black","Observed"="black"))+
+  scale_fill_manual(values=c("Theory"="black","Permuted"="darkgrey","Observed"="purple"))+
+  scale_shape_manual(values=c("Theory"=21,"Permuted"=21,"Observed"=21))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(method='loess',formula=y~x,se=T,size=1.5,col="purple")+
+  geom_ribbon(stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted",col="black")+
+  ylab(expression(Mean~MAF))+
+  xlab(expression(Null~quantile))+
+  scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.085, 0.105))
+
+
+#1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=2,nrow=nboot)
+mf.frqs.s <- mf.frqs[,c("FST_GAMETIC_ST","FST_GAMETIC_PERM2_ST","RANDOM_CHISQ","MAF","MAF_PERM2")]
+set.seed(123)
+for (i in 1:nboot){
+  boot <- sample(1:nrow(mf.frqs.s),replace=T)
+  diff.boots[i,1] <- cor(mf.frqs.s$FST_GAMETIC_ST[boot],mf.frqs.s$MAF[boot],method="spearman")-cor(mf.frqs.s$FST_GAMETIC_PERM2_ST[boot],mf.frqs.s$MAF_PERM2[boot],method="spearman")
+  diff.boots[i,2] <- cor(mf.frqs.s$FST_GAMETIC_ST[boot],mf.frqs.s$MAF[boot],method="spearman")-cor(mf.frqs.s$RANDOM_CHISQ[boot],mf.frqs.s$MAF[boot],method="spearman")
+  print(i)
+}
+
+dd.boots.gametic.cor <- data.frame(melt(diff.boots))
+names(dd.boots.gametic.cor) <- c("Replicate","Type","Difference")
+dd.boots.gametic.cor$Type <- as.factor(dd.boots.gametic.cor$Type)
+levels(dd.boots.gametic.cor) <- c("Permuted","Theory")
+
+ggplot(dd.boots.gametic.cor,aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("purple","purple"))+
+  scale_color_manual(values=c("darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20),strip.text=element_blank())+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~rho(hat(F)[ST],MAF)-Null~rho(hat(F)[ST],MAF)~(10^3~boot.~reps)))+
+  ggtitle(expression(Gametic~hat(F)[ST]))+
+  xlim(c(0,max(dd.boots.gametic.cor$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")+
+  facet_grid(Type~.,scale="free")
+
+#Empirical p-value
+sum(dd.boots.gametic.cor$Difference<0)
+#p<0.001
+
+
+
+
+## Reprod. Fst_st, Quantile-proportion plot####
+
+## Number of permuted and observed Fst values within each theoretical quantile of Fst
+quantiles.theory <- quantile(mf.frqs$RANDOM_CHISQ, prob = seq(0, 1, length = 101), type = 1)
+quantiles.theory[1] <- 0
+quantiles.theory[101] <- 10^6
+
+quantiles.perm <- vector("numeric")
+quantiles.obs <- vector("numeric")
+for (i in 1:100){
+  quantiles.perm[i] <- sum(mf.frqs$FST_REPRODUCTIVE_PERM_ST>quantiles.theory[i] & mf.frqs$FST_REPRODUCTIVE_PERM_ST<=quantiles.theory[(i+1)])/nrow(mf.frqs)
+  quantiles.obs[i] <- sum(mf.frqs$FST_REPRODUCTIVE_ST>quantiles.theory[i] & mf.frqs$FST_REPRODUCTIVE_ST<=quantiles.theory[(i+1)])/nrow(mf.frqs)
+  print(i)
+}
+dd.quantiles <- data.frame(c(quantiles.perm,quantiles.obs))
+dd.quantiles$Type <- factor(c(rep("Permuted",100),rep("Observed",100)))
+dd.quantiles$Type <- factor(dd.quantiles$Type,levels=c("Permuted","Observed"))
+dd.quantiles$Quantile <- rep(c(1:100),2)
+names(dd.quantiles) <- c("Proportion","Type","Quantiles")
+dd.quantiles$Proportion <- dd.quantiles$Proportion*100
+
+fst_reproductive_qp_plot <- ggplot(dd.quantiles,aes(x=Quantiles,y=Proportion,col=Type,fill=Type))+
+  geom_point(size=3)+
+  theme_classic()+
+  scale_color_manual(values=c("darkgrey","forestgreen"))+
+  scale_fill_manual(values=c("darkgrey","forestgreen"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  theme(strip.background = element_blank())+
+  geom_smooth(data=subset(dd.quantiles), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.quantiles), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  scale_y_continuous(breaks=seq(0,1.2, by=0.05), limits=c(0.95, 1.15))+
+  ylab(expression(Percentage~of~sites))+
+  geom_hline(yintercept=1,linetype="dashed")+
+  xlab(expression(hat(F)[ST]~quantile~(theoretical~null)))+
+  ggtitle(expression(Reproductive~hat(F)[ST]))
+fst_reproductive_qp_plot
+
+
+##1,000 bootstraps#
+diff.boots <- matrix(data=NA,ncol=2,nrow=1000)
+mf.frqs.s <- mf.frqs[,c("FST_REPRODUCTIVE_ST","FST_REPRODUCTIVE_PERM_ST","RANDOM_CHISQ")]
+set.seed(123)
+for (i in 1:1000){
+  boot <- sample(1:nrow(mf.frqs.s),replace=T)
+  diff.boots[i,1] <- mean(mf.frqs.s$FST_REPRODUCTIVE_ST[boot])-mean(mf.frqs.s$FST_REPRODUCTIVE_PERM_ST[boot])
+  diff.boots[i,2] <- mean(mf.frqs.s$FST_REPRODUCTIVE_ST[boot])-mean(mf.frqs.s$RANDOM_CHISQ[boot])
+  print(i)
+}
+
+dd.boots.reproductive.qp <- data.frame(melt(diff.boots))
+names(dd.boots.reproductive.qp) <- c("Replicate","Type","Difference")
+dd.boots.reproductive.qp$Type <- as.factor(dd.boots.reproductive.qp$Type)
+levels(dd.boots.reproductive.qp$Type) <- c("Permuted","Theory")
+
+ggplot(dd.boots.reproductive.qp,aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("forestgreen","forestgreen"))+
+  scale_color_manual(values=c("darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20),plot.margin = unit(c(0.1,1,0.1,0.1), "cm"),strip.text=element_blank())+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~bar(hat(F)[ST])-Null~bar(hat(F)[ST])~(10^3~boot.~reps.)))+
+  ggtitle(expression(Reproductive~hat(F)[ST]))+
+  xlim(c(0,max(dd.boots.reproductive.qp$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")+
+  facet_grid(Type~.,scale="free")
+
+
+## Reprod. Fst_st, Manhattan plot####
+
+#When there is no snp < 10% fdr
+CMplot(mf.frqs[,c("ID","CHROM","POS","FST_REPRODUCTIVE_P")],type="p",plot.type="m",col=c("lightgrey","darkgrey"),LOG10=TRUE,threshold.col=c("blue"),memo="",verbose=TRUE,width=16,height=6,cex=0.5,file.output=F,dpi=600,threshold=c(0.05/nrow(mf.frqs)),chr.labels = c(1:22))
+
+
+#Reprod. Fst_st ~ MAF####
+#Quantile proportion plot
+quantiles.theory <- quantile(mf.frqs$RANDOM_CHISQ, prob = seq(0, 1, length = 101), type = 1)
+quantiles.theory[1] <- 0
+quantiles.theory[101] <- 10^6
+
+maf.theory <- vector("numeric")
+maf.perm <- vector("numeric")
+maf.obs <- vector("numeric")
+for (i in 1:100){
+  maf.theory[i] <- mean(subset(mf.frqs,RANDOM_CHISQ>quantiles.theory[i] & RANDOM_CHISQ<=quantiles.theory[(i+1)])$MAF)
+  maf.perm[i] <- mean(subset(mf.frqs,FST_REPRODUCTIVE_PERM_ST>quantiles.theory[i] & FST_REPRODUCTIVE_PERM_ST<=quantiles.theory[(i+1)])$MAF)
+  maf.obs[i] <- mean(subset(mf.frqs,FST_REPRODUCTIVE_ST>quantiles.theory[i] & FST_REPRODUCTIVE_ST<=quantiles.theory[(i+1)])$MAF)
+  print(i)
+}  
+
+dd.maf <- data.frame(c(maf.theory,maf.perm,maf.obs))
+dd.maf$Type <- factor(c(rep("Theory",100),rep("Permuted",100),rep("Observed",100)))
+dd.maf$Type <- factor(dd.maf$Type,levels=c("Theory","Permuted","Observed"))
+dd.maf$Quantile <- rep(c(1:100),3)
+names(dd.maf) <- c("MAF","Type","Quantiles")
+
+fst_reproductive_maf_plot <- ggplot(dd.maf,aes(x=Quantiles,y=MAF,col=Type,fill=Type))+
+  geom_point( size=3 )+
+  theme_classic()+
+  scale_color_manual(values=c("black","darkgrey","forestgreen"))+
+  scale_fill_manual(values=c("black","darkgrey","forestgreen"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.maf), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.maf), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  ylab(expression(Mean~MAF))+
+  xlab(expression(hat(F)[ST]~quantile))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.13, 0.16))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.15, 0.19))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.11, 0.15))+
+  ggtitle(expression(Reproductive~hat(F)[ST]))
+fst_reproductive_maf_plot
+
+
+## 1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=2,nrow=nboot)
+mf.frqs.s <- mf.frqs[,c("FST_REPRODUCTIVE_ST","FST_REPRODUCTIVE_PERM_ST","RANDOM_CHISQ","MAF")]
+set.seed(123)
+for (i in 1:nboot){
+  boot <- sample(1:nrow(mf.frqs.s),replace=T)
+  diff.boots[i,1] <- cor(mf.frqs.s$FST_REPRODUCTIVE_ST[boot],mf.frqs.s$MAF[boot],method="spearman")-cor(mf.frqs.s$FST_REPRODUCTIVE_PERM_ST[boot],mf.frqs.s$MAF[boot],method="spearman")
+  diff.boots[i,2] <- cor(mf.frqs.s$FST_REPRODUCTIVE_ST[boot],mf.frqs.s$MAF[boot],method="spearman")-cor(mf.frqs.s$RANDOM_CHISQ[boot],mf.frqs.s$MAF[boot],method="spearman")
+  print(i)
+}
+
+dd.boots.reproductive.cor <- data.frame(melt(diff.boots))
+names(dd.boots.reproductive.cor) <- c("Replicate","Type","Difference")
+dd.boots.reproductive.cor$Type <- as.factor(dd.boots.reproductive.cor$Type)
+levels(dd.boots.reproductive.cor) <- c("Permuted","Theory")
+
+ggplot(dd.boots.reproductive.cor,aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("forestgreen","forestgreen"))+
+  scale_color_manual(values=c("darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20),strip.text=element_blank())+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~rho(hat(F)[ST],MAF)-Null~rho(hat(F)[ST],MAF)~(10^3~boot.~reps.)))+
+  ggtitle(expression(Reproductive~hat(F)[ST]))+
+  xlim(c(0,max(dd.boots.reproductive.cor$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")+
+  facet_grid(Type~.,scale="free")
+
+#Empirical p-values
+sum(dd.boots.reproductive.cor$Difference<0)
+#p<0.001
+
+
+
+#Unfolded Fst, Quantile plot####
+
+#Quantile-proportion plot 
+quantiles.theory <- quantile(mf.frqs$UNFOLDED_FST_THEORY, prob = seq(0, 1, length = 101), type = 1)
+quantiles.theory[1] <- -10^6
+quantiles.theory[101] <- 10^6
+
+quantiles.perm <- vector("numeric")
+quantiles.obs <- vector("numeric")
+for (i in 1:100){
+  quantiles.perm[i] <- sum(mf.frqs$UNFOLDED_FST_PERM>quantiles.theory[i] & mf.frqs$UNFOLDED_FST_PERM<=quantiles.theory[(i+1)])/nrow(mf.frqs)
+  quantiles.obs[i] <- sum(mf.frqs$UNFOLDED_FST>quantiles.theory[i] & mf.frqs$UNFOLDED_FST<=quantiles.theory[(i+1)])/nrow(mf.frqs)
+  print(i)
+}
+
+dd.quantiles <- data.frame(c(quantiles.obs,quantiles.perm))
+dd.quantiles$Type <- factor(c(rep("Observed",100),rep("Permuted",100)))
+dd.quantiles$Type <- factor(dd.quantiles$Type,levels=c("Permuted","Observed"))
+dd.quantiles$Quantile <- rep(c(1:100),2)
+names(dd.quantiles) <- c("Proportion","Type","Quantiles")
+dd.quantiles$Proportion <- dd.quantiles$Proportion*100
+
+ggplot(dd.quantiles,aes(x=Quantiles,y=Proportion,col=Type,fill=Type))+
+  geom_point( size=3 )+
+  theme_classic()+
+  scale_color_manual(values=c("darkgrey","#40B0A6"))+
+  scale_fill_manual(values=c("darkgrey","#40B0A6"))+
+  geom_smooth(data=subset(dd.quantiles), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.quantiles), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  geom_hline(yintercept=1,linetype="dashed")+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20),strip.text=element_text(size=20),strip.background = element_blank())+
+  scale_y_continuous(breaks=seq(0,1.4, by=0.1), limits=c(0.94, 1.4))+
+  ylab(expression(Percentage~of~sites))+
+  xlab(expression(hat(F)[ST]~quantile~(theoretical~null)))+
+  ggtitle(expression(Unfolded~reproductive~hat(F)[ST])) 
+
+
+## 1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=4,nrow=1000)
+mf.frqs.s <- mf.frqs[,c("UNFOLDED_FST","UNFOLDED_FST_PERM","UNFOLDED_FST_THEORY")]
+mf.frqs.s1 <- subset(mf.frqs.s,UNFOLDED_FST>0)
+mf.frqs.s2 <- subset(mf.frqs.s,UNFOLDED_FST_PERM>0)
+mf.frqs.s3 <- subset(mf.frqs.s,UNFOLDED_FST_THEORY>0)
+mf.frqs.s4 <- subset(mf.frqs.s,UNFOLDED_FST<0)
+mf.frqs.s5 <- subset(mf.frqs.s,UNFOLDED_FST_PERM<0)
+mf.frqs.s6 <- subset(mf.frqs.s,UNFOLDED_FST_THEORY<0)
+set.seed(123)
+for (i in 1:1000){
+  boot1 <- sample(1:nrow(mf.frqs.s1),replace=T)
+  boot2 <- sample(1:nrow(mf.frqs.s2),replace=T)
+  boot3 <- sample(1:nrow(mf.frqs.s3),replace=T)
+  boot4 <- sample(1:nrow(mf.frqs.s4),replace=T)
+  boot5 <- sample(1:nrow(mf.frqs.s5),replace=T)
+  boot6 <- sample(1:nrow(mf.frqs.s6),replace=T)
+  #SC loci
+  diff.boots[i,1] <- mean(mf.frqs.s1$UNFOLDED_FST[boot1],na.rm=T)-mean(mf.frqs.s2$UNFOLDED_FST_PERM[boot2],na.rm=T)
+  diff.boots[i,2] <- mean(mf.frqs.s1$UNFOLDED_FST[boot1],na.rm=T)-mean(mf.frqs.s3$UNFOLDED_FST_THEORY[boot3],na.rm=T)
+  #SA loci
+  diff.boots[i,3] <- mean(mf.frqs.s4$UNFOLDED_FST[boot4],na.rm=T)-mean(mf.frqs.s5$UNFOLDED_FST_PERM[boot5],na.rm=T)
+  diff.boots[i,4] <- mean(mf.frqs.s4$UNFOLDED_FST[boot4],na.rm=T)-mean(mf.frqs.s6$UNFOLDED_FST_THEORY[boot6],na.rm=T)
+  print(i)
+}
+
+dd.boots.unfolded.qp <- data.frame(melt(diff.boots))
+names(dd.boots.unfolded.qp) <- c("Replicate","Type","Difference")
+dd.boots.unfolded.qp$Type <- factor(dd.boots.unfolded.qp$Type)
+dd.boots.unfolded.qp$Type2 <- dd.boots.unfolded.qp$Type
+levels(dd.boots.unfolded.qp$Type) <- c("Permuted","Theory","Permuted","Theory")
+levels(dd.boots.unfolded.qp$Type2) <- c("SC","SC","SA","SA")
+
+ggplot(subset(dd.boots.unfolded.qp),aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity",bins=50)+
+  theme_classic()+
+  scale_fill_manual(values=c("#40B0A6","#40B0A6"))+
+  scale_color_manual(values=c("darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20),plot.margin = unit(c(0.1,1,0.1,0.1), "cm"),strip.text = element_blank())+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~bar(hat(F)[ST])-Null~bar(hat(F)[ST])~(10^3~boot.~reps.)))+
+  ggtitle(expression(Unfolded~reproductive~hat(F)[ST]))+
+  xlim(c(-0.06,0.06))+
+  geom_vline(xintercept=0,linetype="dashed")+
+  facet_grid(Type~.,scale = "free")
+
+
+#Unfolded Fst, MAF plot####
+quantiles.theory <- quantile(mf.frqs$UNFOLDED_FST_THEORY, prob = seq(0, 1, length = 101), type = 1)
+quantiles.theory[1] <- -10^6
+quantiles.theory[101] <- 10^6
+
+maf.theory <- vector("numeric")
+maf.perm <- vector("numeric")
+maf.obs <- vector("numeric")
+for (i in 1:100){
+  maf.perm[i] <- mean(subset(mf.frqs,UNFOLDED_FST_PERM>quantiles.theory[i] & UNFOLDED_FST_PERM<=quantiles.theory[(i+1)])$MAF)
+  maf.obs[i] <- mean(subset(mf.frqs,UNFOLDED_FST>quantiles.theory[i] & mf.frqs$UNFOLDED_FST<=quantiles.theory[(i+1)])$MAF)
+  maf.theory[i] <- mean(subset(mf.frqs,UNFOLDED_FST_THEORY>quantiles.theory[i] & mf.frqs$UNFOLDED_FST_THEORY<=quantiles.theory[(i+1)])$MAF)
+  print(i)
+}
+
+dd.quantiles <- data.frame(c(maf.obs,maf.perm,maf.theory))
+dd.quantiles$Type <- factor(c(rep("Observed",100),rep("Permuted",100),rep("Theory",100)))
+dd.quantiles$Type <- factor(dd.quantiles$Type,levels=c("Theory","Permuted","Observed"))
+dd.quantiles$Quantile <- rep(c(1:100),3)
+names(dd.quantiles) <- c("MAF","Type","Quantiles")
+
+ggplot(dd.quantiles,aes(x=Quantiles,y=MAF,col=Type,fill=Type))+
+  geom_point( size=3 )+
+  theme_classic()+
+  scale_color_manual(values=c("black","grey75","#40B0A6"))+
+  scale_fill_manual(values=c("black","grey75","#40B0A6"))+
+  geom_smooth(data=subset(dd.quantiles), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.quantiles), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  #geom_hline(yintercept=1,linetype="dashed")+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),title = element_text(size=20),strip.text=element_text(size=20),strip.background = element_blank(),legend.position="none")+
+  #scale_y_continuous(breaks=seq(0,1.3, by=0.1), limits=c(0.85, 1.25),)+
+  #scale_y_continuous(breaks=seq(0,1.3, by=0.2), limits=c(0.75, 1.25),)+
+  ylab(expression(Mean~MAF))+
+  xlab(expression(hat(F)[ST]~quantile~(theoretical~null)))
+  #ggtitle(expression(Adult~hat(F)[ST])) 
+
+
+## 1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=4,nrow=nboot)
+mf.frqs.s <- mf.frqs[,c("UNFOLDED_FST","UNFOLDED_FST_PERM","UNFOLDED_FST_THEORY","MAF")]
+mf.frqs.spos <- subset(mf.frqs.s,UNFOLDED_FST>0)
+mf.frqs.spos.perm <- subset(mf.frqs.s,UNFOLDED_FST_PERM>0)
+mf.frqs.spos.theory <- subset(mf.frqs.s,UNFOLDED_FST_THEORY>0)
+mf.frqs.sneg <- subset(mf.frqs.s,UNFOLDED_FST<0)
+mf.frqs.sneg.perm <- subset(mf.frqs.s,UNFOLDED_FST_PERM<0)
+mf.frqs.sneg.theory <- subset(mf.frqs.s,UNFOLDED_FST_THEORY<0)
+set.seed(123)
+for (i in 1:nboot){
+  boot <- sample(1:nrow(mf.frqs.s),replace=T)
+  #SC loci
+  diff.boots[i,1] <- cor(mf.frqs.spos$UNFOLDED_FST[boot],mf.frqs.spos$MAF[boot],method="spearman",use="complete.obs")-cor(mf.frqs.spos.perm$UNFOLDED_FST_PERM[boot],mf.frqs.spos.perm$MAF[boot],method="spearman",use="complete.obs")
+  diff.boots[i,2] <- cor(mf.frqs.spos$UNFOLDED_FST[boot],mf.frqs.spos$MAF[boot],method="spearman",use="complete.obs")-cor(mf.frqs.spos.theory$UNFOLDED_FST_PERM[boot],mf.frqs.spos.theory$MAF[boot],method="spearman",use="complete.obs")
+  #SA loci
+  diff.boots[i,3] <- cor(mf.frqs.sneg$UNFOLDED_FST[boot],mf.frqs.sneg$MAF[boot],method="spearman",use="complete.obs")-cor(mf.frqs.sneg.perm$UNFOLDED_FST_PERM[boot],mf.frqs.sneg.perm$MAF[boot],method="spearman",use="complete.obs")
+  diff.boots[i,4] <- cor(mf.frqs.sneg$UNFOLDED_FST[boot],mf.frqs.sneg$MAF[boot],method="spearman",use="complete.obs")-cor(mf.frqs.sneg.theory$UNFOLDED_FST_PERM[boot],mf.frqs.sneg.theory$MAF[boot],method="spearman",use="complete.obs")
+  print(i)
+}
+
+dd.boots.unfolded.cor <- data.frame(melt(diff.boots))
+names(dd.boots.unfolded.cor) <- c("Replicate","Type","Difference")
+dd.boots.unfolded.cor$Type <- factor(dd.boots.unfolded.cor$Type)
+dd.boots.unfolded.cor$Type2 <- dd.boots.unfolded.cor$Type
+levels(dd.boots.unfolded.cor$Type) <- c("Permuted","Theory","Permuted","Theory")
+levels(dd.boots.unfolded.cor$Type2) <- c("SC","SC","SA","SA")
+
+ggplot(subset(dd.boots.unfolded.cor),aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("#40B0A6","#40B0A6"))+
+  scale_color_manual(values=c("darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20),strip.text=element_blank())+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~rho(hat(F)[ST],MAF)-Null~rho(hat(F)[ST],MAF)~(10^3~boot.~reps.)))+
+  ggtitle(expression(Unfolded~reproductive~hat(F)[ST]))+
+  xlim(c(min(dd.boots.unfolded.cor$Difference),max(dd.boots.unfolded.cor$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")+
+  facet_grid(Type~.,scale="free")
+
+ggplot(subset(dd.boots.unfolded.cor,Type2=="SA"),aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("#40B0A6","#40B0A6"))+
+  scale_color_manual(values=c("darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20),strip.text=element_blank())+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~rho(hat(F)[ST],MAF)-Null~rho(hat(F)[ST],MAF)~(10^3~boot.~reps.)))+
+  ggtitle(expression(Unfolded~hat(F)[ST]))+
+  xlim(c(min(dd.boots.unfolded.cor$Difference),max(dd.boots.unfolded.cor$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")+
+  facet_grid(Type~.,scale = "free")
+
+#Empirical p-values
+sum(dd.boots.reproductive.cor$Difference<0)
+#p<0.001
+
+
+
+
+
+
+#Lst, Quantile-proportion plot####
+
+## Number of observed Fst values within each permuted quantile of transformed Log-odds ratio
+quantiles.perm <- quantile(mf.gwases$LST_PERM2, prob = seq(0, 1, length = 101), type = 1)
+
+quantiles.obs <- vector("numeric")
+for (i in 1:100){
+  quantiles.obs[i] <- sum(mf.gwases$LST>quantiles.perm[i] & mf.gwases$LST<=quantiles.perm[(i+1)])/nrow(mf.gwases)
+  print(i)
+}
+dd.quantiles <- data.frame(c(quantiles.obs))
+dd.quantiles$Type <- factor(c(rep("Observed",100)))
+dd.quantiles$Quantile <- rep(c(1:100),1)
+names(dd.quantiles) <- c("Proportion","Type","Quantiles")
+dd.quantiles$Proportion <- dd.quantiles$Proportion*100
+
+logodds_viab_qp_plot <- ggplot(dd.quantiles,aes(x=Quantiles,y=Proportion,col=Type,fill=Type))+
+  geom_point( size=4,shape=18 )+
+  theme_classic()+
+  scale_color_manual(values=c("darkorange","darkgrey"))+
+  scale_fill_manual(values=c("darkorange","darkgrey"))+
+  geom_hline(yintercept=1,linetype="dashed")+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.quantiles), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.quantiles), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  scale_y_continuous(breaks=seq(0,1.2, by=0.05), limits=c(0.95, 1.15))+
+  ylab(expression(Percentage~of~sites))+
+  xlab(expression(hat(L)[ST]~quantile~(empirical~null)))+
+  ggtitle(expression(hat(L)[ST]))
+logodds_viab_qp_plot
+
+## 1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=1,nrow=1000)
+mf.gwases.s <- mf.gwases[,c("LST","LST_PERM2")]
+set.seed(123)
+for (i in 1:1000){
+  boot <- sample(1:nrow(mf.gwases.s),replace=T)
+  diff.boots[i,1] <- mean(mf.gwases.s$LST[boot])-mean(mf.gwases.s$LST_PERM2[boot])
+  print(i)
+}
+
+dd.boots.lst.qp <- data.frame(melt(diff.boots))
+names(dd.boots.lst.qp) <- c("Replicate","Type","Difference")
+dd.boots.lst.qp$Type <- as.factor(dd.boots.lst.qp$Type)
+
+ggplot(dd.boots.lst.qp,aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("darkorange","darkorange"))+
+  scale_color_manual(values=c("darkgrey","black"))+
+  theme(axis.title = element_text(size=20),plot.margin = unit(c(0.1,1,0.1,0.1), "cm"),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~bar(hat(L)[ST])-Null~bar(hat(L)[ST])~(10^3~boot.~reps.)))+
+  ggtitle(expression(hat(L)[ST]))+
+  xlim(c(0,max(dd.boots.lst.qp$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")
+
+
+##Lst,  Manhattan plot####
+
+par(mar = c(2, 5, 2, 2))
+#When there is no snp < 10% fdr
+CMplot(mf.gwases[,c("ID","CHROM","POS","P_BOLT_LMM_INF")],type="p",plot.type="m",col=c("lightgrey","darkgrey"),LOG10=TRUE,threshold.col=c("blue"),memo="",verbose=TRUE,width=16,height=6,cex=0.5,file.output=F,dpi=600,threshold=c(0.05/nrow(mf.gwases)),chr.labels = c(1:22))
+
+
+##Lst ~ MAF####
+
+#Quantile-proportion plot
+quantiles.perm <- quantile(mf.gwases$LST_PERM2, prob = seq(0, 1, length = 101), type = 1)
+quantiles.perm[1] <- 0
+quantiles.perm[101] <- 1
+
+maf.perm <- vector("numeric")
+maf.obs <- vector("numeric")
+for (i in 1:100){
+  maf.perm[i] <- mean(subset(mf.gwases,LST_PERM2>quantiles.perm[i] & LST_PERM2<=quantiles.perm[(i+1)])$MAF_PERM2)
+  maf.obs[i] <- mean(subset(mf.gwases,LST>quantiles.perm[i] & LST<=quantiles.perm[(i+1)])$MAF)
+  print(i)
+}  
+
+dd.maf <- data.frame(c(maf.perm,maf.obs))
+dd.maf$Type <- factor(c(rep("Permuted",100),rep("Observed",100)))
+dd.maf$Quantile <- rep(c(1:100),2)
+names(dd.maf) <- c("MAF","Type","Quantiles")
+
+logodds_viab_maf_plot <- ggplot(dd.maf,aes(x=Quantiles,y=MAF,col=Type,fill=Type))+
+  geom_point( size=3 )+
+  theme_classic()+
+  scale_color_manual(values=c("darkorange","darkgrey","black"))+
+  scale_fill_manual(values=c("darkorange","darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.maf), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.maf), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  ylab(expression(Mean~MAF))+
+  xlab(expression(hat(L)[ST]~quantile))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.11, 0.15))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.13, 0.16))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.15, 0.19))+
+  ggtitle(expression(hat(L)[ST])) 
+logodds_viab_maf_plot
+
+
+## 1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=1,nrow=nboot)
+mf.gwases.s <- mf.gwases[,c("LST","LST_PERM2","MAF","MAF_PERM2")]
+set.seed(123)
+for (i in 1:nboot){
+  boot <- sample(1:nrow(mf.gwases.s),replace = T)
+  diff.boots[i,1] <- cor(mf.gwases.s$LST[boot],mf.gwases.s$MAF[boot],method="spearman")-cor(mf.gwases.s$LST_PERM2[boot],mf.gwases.s$MAF_PERM2[boot],method="spearman")
+  print(i)
+}
+
+dd.boots.lst.cor <- data.frame(melt(diff.boots))
+names(dd.boots.lst.cor) <- c("Replicate","Type","Difference")
+dd.boots.lst.cor$Type <- as.factor(dd.boots.lst.cor$Type)
+
+ggplot(dd.boots.lst.cor,aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("darkorange"))+
+  scale_color_manual(values=c("darkgrey"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~rho(hat(L)[ST],MAF)-Null~rho(hat(L)[ST],MAF)~(10^3~boot.~reps)))+
+  ggtitle(expression(hat(L)[ST]))+
+  xlim(c(0,max(dd.boots.lst.cor$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")
+
+#Empirical p-values
+sum(dd.boots.lst.cor$Difference<0)
+#p<0.001
+
+
+
+#Combined plot of Adult Fst and Lst####
+quantiles.theory <- quantile(mf.frqs$RANDOM_CHISQ, prob = seq(0, 1, length = 101), type = 1)
+quantiles.theory[1] <- 0
+quantiles.theory[101] <- 10^6
+
+quantiles.perm <- quantile(mf.gwases$LST_PERM2, prob = seq(0, 1, length = 101), type = 1)
+quantiles.perm[1] <- 0
+quantiles.perm[101] <- 1
+
+maf.perm.fst <- vector("numeric")
+maf.obs.fst <- vector("numeric")
+maf.perm.lst <- vector("numeric")
+maf.obs.lst <- vector("numeric")
+for (i in 1:100){
+  maf.perm.fst[i] <- mean(subset(mf.frqs,FST_VIABILITY_PERM2_ST>quantiles.theory[i] & FST_VIABILITY_PERM2_ST<=quantiles.theory[(i+1)])$MAF_PERM2)
+  maf.obs.fst[i] <- mean(subset(mf.frqs,FST_VIABILITY_ST>quantiles.theory[i] & FST_VIABILITY_ST<=quantiles.theory[(i+1)])$MAF)
+  maf.perm.lst[i] <- mean(subset(mf.gwases,LST>quantiles.perm[i] & LST<=quantiles.perm[(i+1)])$MAF_PERM2)
+  maf.obs.lst[i] <- mean(subset(mf.gwases,LST_PERM2>quantiles.perm[i] & LST_PERM2<=quantiles.perm[(i+1)])$MAF)
+  print(i)
+}  
+
+dd.maf <- data.frame(c(maf.perm.fst,maf.obs.fst,maf.perm.lst,maf.obs.lst))
+dd.maf$Type <- factor(c(rep("Permuted",100),rep("Observed",100),rep("Permuted",100),rep("Observed",100)))
+dd.maf$Type <- factor(dd.maf$Type,levels=c("Permuted","Observed"))
+dd.maf$Type2 <- factor(c(rep("Fst",200),rep("non-Fst",200)))
+dd.maf$Quantile <- rep(c(1:100),4)
+names(dd.maf) <- c("MAF","Type","Type2","Quantiles")
+
+ggplot(subset(dd.maf,Type=="Observed"),aes(x=Quantiles,y=MAF,shape=Type2,col=Type2,fill=Type))+
+  geom_point(size=3)+
+  theme_classic()+
+  scale_color_manual(values=c("non-Fst" = "darkorange","Fst"="black"))+
+  scale_fill_manual(values=c("Observed" = "darkorange","Permuted"="darkgrey"))+
+  scale_shape_manual(values=c("Fst" = 21,"non-Fst" = 23))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.maf,Type=="Observed"), method='loess',formula=y~x,se=T,size=1.5,col="darkorange")+
+  geom_ribbon(data=subset(dd.maf,Type=="Observed" & Type2=="Fst"), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted",size=0.6,col="black")+
+  geom_ribbon(data=subset(dd.maf,Type=="Observed" & Type2=="non-Fst"), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted",size=0.4,col="darkorange")+
+  ylab(expression(Mean~MAF))+
+  xlab(expression(Null~quantile))+
+  scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.085, 0.105))
+
+
+
+
+
+## |t|, Quantile-proportion plot####
+
+## Number of permuted and observed absT values within each permuted quantile of absT
+quantiles.perm <- quantile(mf.gwases.lrs$ABS_T_PERM, prob = seq(0, 1, length = 101), type = 1)
+quantiles.perm[1] <- 0
+quantiles.perm[101] <- 10^6
+
+quantiles.obs <- vector("numeric")
+for (i in 1:100){
+  quantiles.obs[i] <- sum(mf.gwases.lrs$ABS_T>quantiles.perm[i] & mf.gwases.lrs$ABS_T<=quantiles.perm[(i+1)])/nrow(mf.gwases.lrs)
+  print(i)
+}
+dd.quantiles <- data.frame(c(quantiles.obs))
+dd.quantiles$Type <- factor(c(rep("Observed",100)))
+dd.quantiles$Quantile <- rep(c(1:100),1)
+names(dd.quantiles) <- c("Proportion","Type","Quantiles")
+dd.quantiles$Proportion <- dd.quantiles$Proportion*100
+
+absT_qp_plot <- ggplot(dd.quantiles,aes(x=Quantiles,y=Proportion,col=Type,fill=Type))+
+  geom_point( size=4, shape=18 )+
+  theme_classic()+
+  scale_color_manual(values=c("forestgreen","darkgrey"))+
+  scale_fill_manual(values=c("forestgreen","darkgrey"))+
+  geom_hline(yintercept=1,linetype="dashed")+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.quantiles), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.quantiles), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  scale_y_continuous(breaks=seq(0,1.2, by=0.05), limits=c(0.95, 1.15))+
+  ylab(expression(Percentage~of~sites))+
+  xlab(expression(abs(t)~quantile~(empirical~null)))+
+  ggtitle(expression(abs(t))) 
+absT_qp_plot
+
+
+##1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=1,nrow=1000)
+mf.gwases.lrs.s <- mf.gwases.lrs[,c("ABS_T","ABS_T_PERM")]
+set.seed(123)
+for (i in 1:1000){
+  #boot <- sample(1:nrow(mf.gwases.lrs.s),replace=T)
+  #diff.boots[i,1] <- mean(mf.gwases.lrs.s$ABS_T[boot])-mean(mf.gwases.lrs.s$ABS_T_PERM[boot])
+  
+  boot <- sample(1:nrow(mf.gwases.lrs.s),replace=T)
+  mf.gwases.lrs.s2 <- mf.gwases.lrs.s[boot,]
+  diff.boots[i,1] <- mean(mf.gwases.lrs.s2$ABS_T)-mean(mf.gwases.lrs.s2$ABS_T_PERM)
+  print(i)
+  
+}
+
+dd.boots.absT.qp <- data.frame(melt(diff.boots))
+names(dd.boots.absT.qp) <- c("Replicate","Type","Difference")
+dd.boots.absT.qp$Type <- as.factor(dd.boots.absT.qp$Type)
+
+ggplot(dd.boots.absT.qp,aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("forestgreen","white"))+
+  scale_color_manual(values=c("darkgrey","black"))+
+  theme(axis.title = element_text(size=20),plot.margin = unit(c(0.1,1,0.1,0.1), "cm"),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~bar(abs(t))-Null~bar(abs(t))~(10^3~boot.~reps.)))+
+  ggtitle(expression(abs(t)))+
+  xlim(c(0,max(dd.boots.absT.qp$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")
+
+
+#|t| ~ MAF####
+
+#Quantile proportion plot
+quantiles.perm <- quantile(mf.gwases.lrs$ABS_T_PERM, prob = seq(0, 1, length = 101), type = 1)
+quantiles.perm[1] <- 0
+quantiles.perm[101] <- 1
+quantiles.obs <- quantile(mf.gwases.lrs$ABS_T, prob = seq(0, 1, length = 101), type = 1)
+quantiles.obs[1] <- 0
+quantiles.obs[101] <- 1
+
+maf.perm <- vector("numeric")
+maf.obs <- vector("numeric")
+for (i in 1:100){
+  maf.perm[i] <- mean(subset(mf.gwases.lrs,ABS_T_PERM>quantiles.perm[i] & ABS_T_PERM<=quantiles.perm[(i+1)])$MAF)
+  maf.obs[i] <- mean(subset(mf.gwases.lrs,ABS_T>quantiles.obs[i] & ABS_T<=quantiles.obs[(i+1)])$MAF)
+  print(i)
+}  
+
+dd.maf <- data.frame(c(maf.perm,maf.obs))
+dd.maf$Type <- factor(c(rep("Permuted",100),rep("Observed",100)))
+dd.maf$Quantile <- rep(c(1:100),2)
+names(dd.maf) <- c("MAF","Type","Quantiles")
+
+absT_maf_plot <- ggplot(dd.maf,aes(x=Quantiles,y=MAF,col=Type,fill=Type))+
+  geom_point( size=3 )+
+  theme_classic()+
+  scale_color_manual(values=c("forestgreen","darkgrey","black"))+
+  scale_fill_manual(values=c("forestgreen","darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.maf), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.maf), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  ylab(expression(Mean~MAF))+
+  xlab(expression(abs(t)~quantile))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.11, 0.15))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.13, 0.16))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.15, 0.19))+
+  ggtitle(expression(abs(t)))
+absT_maf_plot
+
+#1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=1,nrow=nboot)
+mf.gwases.lrs.s <- mf.gwases.lrs[,c("ABS_T","ABS_T_PERM","MAF")]
+set.seed(123)
+for (i in 1:nboot){
+  boot <- sample(1:nrow(mf.gwases.lrs.s),replace=T)
+  diff.boots[i,1] <- cor(mf.gwases.lrs.s$ABS_T[boot],mf.gwases.lrs.s$MAF[boot],method="spearman")-cor(mf.gwases.lrs.s$ABS_T_PERM[boot],mf.gwases.lrs.s$MAF[boot],method="spearman")
+  print(i)
+}
+
+dd.boots.absT.cor <- data.frame(melt(diff.boots))
+names(dd.boots.absT.cor) <- c("Replicate","Type","Difference")
+dd.boots.absT.cor$Type <- as.factor(dd.boots.absT.cor$Type)
+
+ggplot(dd.boots.absT.cor,aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("forestgreen"))+
+  scale_color_manual(values=c("darkgrey"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~rho(abs(t),MAF)-Null~rho(abs(t),MAF)~(10^3~boot.~reps)))+
+  ggtitle(expression(abs(t)))+
+  xlim(c(0,max(dd.boots.absT.cor$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")
+
+#Empirical p-values
+sum(dd.boots.absT.cor$Difference<0)
+#p<0.001
+
+
+
+#Combined plot of Reproductive Fst and |t|####
+quantiles.theory <- quantile(mf.frqs$RANDOM_CHISQ, prob = seq(0, 1, length = 101), type = 1)
+quantiles.theory[1] <- 0
+quantiles.theory[101] <- 10^6
+
+quantiles.perm <- quantile(mf.gwases.lrs$ABS_T_PERM, prob = seq(0, 1, length = 101), type = 1)
+quantiles.perm[1] <- 0
+quantiles.perm[101] <- 1
+
+maf.perm.fst <- vector("numeric")
+maf.obs.fst <- vector("numeric")
+maf.perm.lst <- vector("numeric")
+maf.obs.lst <- vector("numeric")
+for (i in 1:100){
+  maf.perm.fst[i] <- mean(subset(mf.frqs,FST_REPRODUCTIVE_PERM_ST>quantiles.theory[i] & FST_REPRODUCTIVE_PERM_ST<=quantiles.theory[(i+1)])$MAF)
+  maf.obs.fst[i] <- mean(subset(mf.frqs,FST_REPRODUCTIVE_ST>quantiles.theory[i] & FST_REPRODUCTIVE_ST<=quantiles.theory[(i+1)])$MAF)
+  maf.perm.lst[i] <- mean(subset(mf.gwases.lrs,ABS_T_PERM>quantiles.perm[i] & ABS_T_PERM<=quantiles.perm[(i+1)])$MAF)
+  maf.obs.lst[i] <- mean(subset(mf.gwases.lrs,ABS_T>quantiles.perm[i] & ABS_T<=quantiles.perm[(i+1)])$MAF)
+  print(i)
+}  
+
+dd.maf <- data.frame(c(maf.perm.fst,maf.obs.fst,maf.perm.lst,maf.obs.lst))
+dd.maf$Type <- factor(c(rep("Permuted",100),rep("Observed",100),rep("Permuted",100),rep("Observed",100)))
+dd.maf$Type <- factor(dd.maf$Type,levels=c("Permuted","Observed"))
+dd.maf$Type2 <- factor(c(rep("Fst",200),rep("non-Fst",200)))
+dd.maf$Quantile <- rep(c(1:100),4)
+names(dd.maf) <- c("MAF","Type","Type2","Quantiles")
+
+ggplot(subset(dd.maf,Type=="Observed"),aes(x=Quantiles,y=MAF,shape=Type2,col=Type2,fill=Type))+
+  geom_point(size=3)+
+  theme_classic()+
+  scale_color_manual(values=c("non-Fst" = "forestgreen","Fst"="black"))+
+  scale_fill_manual(values=c("Observed" = "forestgreen","Permuted"="darkgrey"))+
+  scale_shape_manual(values=c("Fst" = 21,"non-Fst" = 23))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.maf,Type=="Observed"), method='loess',formula=y~x,se=T,size=1.5,col="forestgreen")+
+  geom_ribbon(data=subset(dd.maf,Type=="Observed" & Type2=="Fst"), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted",size=0.6,col="black")+
+  geom_ribbon(data=subset(dd.maf,Type=="Observed" & Type2=="non-Fst"), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted",size=0.4,col="forestgreen")+
+  ylab(expression(Mean~MAF))+
+  xlab(expression(Null~quantile))+
+  scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.085, 0.105))
+
+
+## Unfolded t, Quantile-proportion plot####
+
+## Number of permuted and observed absT values within each permuted quantile of absT
+quantiles.perm <- quantile(mf.gwases.lrs$UNFOLDED_T_PERM, prob = seq(0, 1, length = 101), type = 1)
+quantiles.perm[1] <- -10^6
+quantiles.perm[101] <- 10^6
+
+quantiles.obs <- vector("numeric")
+for (i in 1:100){
+  quantiles.obs[i] <- sum(mf.gwases.lrs$UNFOLDED_T>quantiles.perm[i] & mf.gwases.lrs$UNFOLDED_T<=quantiles.perm[(i+1)])/nrow(mf.gwases.lrs)
+  print(i)
+}
+dd.quantiles <- data.frame(c(quantiles.obs))
+dd.quantiles$Type <- factor(c(rep("Observed",100)))
+dd.quantiles$Quantile <- rep(c(1:100),1)
+names(dd.quantiles) <- c("Proportion","Type","Quantiles")
+dd.quantiles$Proportion <- dd.quantiles$Proportion*100
+
+UnfoldedT_qp_plot <- ggplot(dd.quantiles,aes(x=Quantiles,y=Proportion,col=Type,fill=Type))+
+  geom_point( size=4, shape=18 )+
+  theme_classic()+
+  scale_color_manual(values=c("#40B0A6","darkgrey"))+
+  scale_fill_manual(values=c("#40B0A6","darkgrey"))+
+  geom_hline(yintercept=1,linetype="dashed")+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.quantiles), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.quantiles), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  #scale_y_continuous(breaks=seq(0,1.3, by=0.2), limits=c(0.75, 1.25),)+
+  ylab(expression(Percentage~of~sites))+
+  xlab(expression(Unfolded~t~quantile~(empirical~null)))+
+  ggtitle(expression(Unfolded~t)) 
+UnfoldedT_qp_plot
+
+
+##1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=2,nrow=1000)
+mf.gwases.lrs.s <- mf.gwases.lrs[,c("UNFOLDED_T","UNFOLDED_T_PERM")]
+mf.gwases.lrs.s1 <- subset(mf.gwases.lrs.s,UNFOLDED_T>0)
+mf.gwases.lrs.s2 <- subset(mf.gwases.lrs.s,UNFOLDED_T_PERM>0)
+mf.gwases.lrs.s4 <- subset(mf.gwases.lrs.s,UNFOLDED_T<0)
+mf.gwases.lrs.s5 <- subset(mf.gwases.lrs.s,UNFOLDED_T_PERM<0)
+set.seed(123)
+for (i in 1:1000){
+  boot1 <- sample(1:nrow(mf.gwases.lrs.s1),replace=T)
+  boot2 <- sample(1:nrow(mf.gwases.lrs.s2),replace=T)
+  boot4 <- sample(1:nrow(mf.gwases.lrs.s4),replace=T)
+  boot5 <- sample(1:nrow(mf.gwases.lrs.s5),replace=T)
+  #SC loci
+  diff.boots[i,1] <- mean(mf.gwases.lrs.s1$UNFOLDED_T[boot1],na.rm=T)-mean(mf.gwases.lrs.s2$UNFOLDED_T_PERM[boot2],na.rm=T)
+  #SA loci
+  diff.boots[i,2] <- mean(mf.gwases.lrs.s4$UNFOLDED_T[boot4],na.rm=T)-mean(mf.gwases.lrs.s5$UNFOLDED_T_PERM[boot5],na.rm=T)
+  print(i)
+}
+
+dd.boots.unfoldedT.qp <- data.frame(melt(diff.boots))
+names(dd.boots.unfoldedT.qp) <- c("Replicate","Type","Difference")
+dd.boots.unfoldedT.qp$Type <- factor(dd.boots.unfoldedT.qp$Type)
+levels(dd.boots.unfoldedT.qp$Type) <- c("SC","SA")
+
+ggplot(dd.boots.unfoldedT.qp,aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity",bins=50)+
+  theme_classic()+
+  scale_fill_manual(values=c("#40B0A6","#40B0A6"))+
+  scale_color_manual(values=c("darkgrey","darkgrey"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),plot.margin = unit(c(0.1,1,0.1,0.1), "cm"),legend.position="none",title = element_text(size=20),strip.text=element_text(size=20),strip.background = element_blank())+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed-Null~unfolded~t~(10^3~boot.~reps.)))+
+  ggtitle(expression(Unfolded~t))+
+  xlim(c(-0.06,0.06))+
+  geom_vline(xintercept=0,linetype="dashed")
+
+
+#Unfolded t ~ MAF####
+
+#Quantile proportion plot
+quantiles.perm <- quantile(mf.gwases.lrs$UNFOLDED_T_PERM, prob = seq(0, 1, length = 101), type = 1)
+quantiles.perm[1] <- -10^6
+quantiles.perm[101] <- 10^6
+
+maf.perm <- vector("numeric")
+maf.obs <- vector("numeric")
+for (i in 1:100){
+  maf.perm[i] <- mean(subset(mf.gwases.lrs,UNFOLDED_T_PERM>quantiles.perm[i] & UNFOLDED_T_PERM<=quantiles.perm[(i+1)])$MAF)
+  maf.obs[i] <- mean(subset(mf.gwases.lrs,UNFOLDED_T>quantiles.perm[i] & UNFOLDED_T<=quantiles.perm[(i+1)])$MAF)
+  print(i)
+}  
+
+dd.maf <- data.frame(c(maf.perm,maf.obs))
+dd.maf$Type <- factor(c(rep("Permuted",100),rep("Observed",100)))
+dd.maf$Quantile <- rep(c(1:100),2)
+names(dd.maf) <- c("MAF","Type","Quantiles")
+
+UnfoldedT_maf_plot <- ggplot(dd.maf,aes(x=Quantiles,y=MAF,col=Type,fill=Type))+
+  geom_point( size=3 )+
+  theme_classic()+
+  scale_color_manual(values=c("#40B0A6","darkgrey","black"))+
+  scale_fill_manual(values=c("#40B0A6","darkgrey","black"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.maf), method='loess',formula=y~x,se=T,size=1.5)+
+  geom_ribbon(data=subset(dd.maf), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted")+
+  ylab(expression(Mean~MAF))+
+  xlab(expression(abs(t)~quantile))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.11, 0.15))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.13, 0.16))+
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.15, 0.19))+
+  ggtitle(expression(abs(t)))
+UnfoldedT_maf_plot
+
+#1,000 bootstraps
+diff.boots <- matrix(data=NA,ncol=2,nrow=nboot)
+mf.gwases.lrs.s <- mf.gwases.lrs[,c("UNFOLDED_T","UNFOLDED_T_PERM","MAF")]
+mf.gwases.lrs.spos <- subset(mf.gwases.lrs.s,UNFOLDED_T>0)
+mf.gwases.lrs.spos.perm <- subset(mf.gwases.lrs.s,UNFOLDED_T_PERM>0)
+mf.gwases.lrs.sneg <- subset(mf.gwases.lrs.s,UNFOLDED_T<0)
+mf.gwases.lrs.sneg.perm <- subset(mf.gwases.lrs.s,UNFOLDED_T_PERM<0)
+set.seed(123)
+for (i in 1:nboot){
+  boot <- sample(1:nrow(mf.gwases.lrs.s),replace=T)
+  #SC loci
+  diff.boots[i,1] <- cor(mf.gwases.lrs.spos$UNFOLDED_T[boot],mf.gwases.lrs.spos$MAF[boot],method="spearman",use="complete.obs")-cor(mf.gwases.lrs.spos.perm$UNFOLDED_T_PERM[boot],mf.gwases.lrs.spos.perm$MAF[boot],method="spearman",use="complete.obs")
+  #SA loci
+  diff.boots[i,2] <- cor(mf.gwases.lrs.sneg$UNFOLDED_T[boot],mf.gwases.lrs.sneg$MAF[boot],method="spearman",use="complete.obs")-cor(mf.gwases.lrs.sneg.perm$UNFOLDED_T_PERM[boot],mf.gwases.lrs.sneg.perm$MAF[boot],method="spearman",use="complete.obs")
+  print(i)
+}
+
+dd.boots.unfoldedT.cor <- data.frame(melt(diff.boots))
+names(dd.boots.unfoldedT.cor) <- c("Replicate","Type","Difference")
+dd.boots.unfoldedT.cor$Type <- factor(dd.boots.unfoldedT.cor$Type)
+levels(dd.boots.unfoldedT.cor$Type) <- c("SC","SA")
+
+ggplot(subset(dd.boots.unfoldedT.cor),aes(x=Difference,fill=Type,col=Type))+
+  geom_histogram(alpha=0.5, position="identity")+
+  theme_classic()+
+  scale_fill_manual(values=c("#40B0A6","#40B0A6"))+
+  scale_color_manual(values=c("darkgrey","darkgrey"))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20),strip.text=element_blank())+
+  ylab(expression(Frequency))+
+  xlab(expression(Observed~rho(t,MAF)-Null~rho(t,MAF)~(10^3~boot.~reps.)))+
+  ggtitle(expression(Unfolded~t))+
+  xlim(c(min(dd.boots.unfoldedT.cor$Difference),max(dd.boots.unfoldedT.cor$Difference)))+
+  geom_vline(xintercept=0,linetype="dashed")
+
+#Empirical p-values
+sum(dd.boots.unfoldedT.cor$Difference<0)
+#p<0.001
+
+
+#Combined unfolded Fst and t plot
+quantiles.theory <- quantile(mf.frqs$UNFOLDED_FST_THEORY, prob = seq(0, 1, length = 101), type = 1)
+quantiles.theory[1] <- -10^6
+quantiles.theory[101] <- 10^6
+
+quantiles.perm <- quantile(mf.gwases.lrs$UNFOLDED_T_PERM, prob = seq(0, 1, length = 101), type = 1)
+quantiles.perm[1] <- -10^6
+quantiles.perm[101] <- 10^6
+
+maf.perm.unfolded.fst <- vector("numeric")
+maf.obs.unfolded.fst <- vector("numeric")
+maf.perm.unfolded.t <- vector("numeric")
+maf.obs.unfolded.t <- vector("numeric")
+for (i in 1:100){
+  maf.perm.unfolded.fst[i] <- mean(subset(mf.frqs,UNFOLDED_FST_PERM>quantiles.theory[i] & UNFOLDED_FST_PERM<=quantiles.theory[(i+1)])$MAF)
+  maf.obs.unfolded.fst[i] <- mean(subset(mf.frqs,UNFOLDED_FST>quantiles.theory[i] & UNFOLDED_FST<=quantiles.theory[(i+1)])$MAF)
+  maf.perm.unfolded.t[i] <- mean(subset(mf.gwases.lrs,UNFOLDED_T_PERM>quantiles.perm[i] & UNFOLDED_T_PERM<=quantiles.perm[(i+1)])$MAF)
+  maf.obs.unfolded.t[i] <- mean(subset(mf.gwases.lrs,UNFOLDED_T>quantiles.perm[i] & UNFOLDED_T<=quantiles.perm[(i+1)])$MAF)
+  print(i)
+}  
+
+dd.maf <- data.frame(c(maf.perm.unfolded.fst,maf.obs.unfolded.fst,maf.perm.unfolded.t,maf.obs.unfolded.t))
+dd.maf$Type <- factor(c(rep("Permuted",100),rep("Observed",100),rep("Permuted",100),rep("Observed",100)))
+dd.maf$Type <- factor(dd.maf$Type,levels=c("Permuted","Observed"))
+dd.maf$Type2 <- factor(c(rep("Fst",200),rep("non-Fst",200)))
+dd.maf$Quantile <- rep(c(1:100),4)
+names(dd.maf) <- c("MAF","Type","Type2","Quantiles")
+
+ggplot(subset(dd.maf,Type=="Observed"),aes(x=Quantiles,y=MAF,shape=Type2,col=Type2,fill=Type))+
+  geom_point(size=3)+
+  theme_classic()+
+  scale_color_manual(values=c("non-Fst" = "#40B0A6","Fst"="black"))+
+  scale_fill_manual(values=c("Observed" = "#40B0A6","Permuted"="darkgrey"))+
+  scale_shape_manual(values=c("Fst" = 21,"non-Fst" = 23))+
+  theme(axis.title = element_text(size=20),axis.text = element_text(size=20),legend.position="none",title = element_text(size=20))+
+  geom_smooth(data=subset(dd.maf,Type=="Observed"), method='loess',formula=y~x,se=T,size=1.5,col="#40B0A6")+
+  geom_ribbon(data=subset(dd.maf,Type=="Observed" & Type2=="Fst"), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted",size=0.6,col="black")+
+  geom_ribbon(data=subset(dd.maf,Type=="Observed" & Type2=="non-Fst"), stat="smooth",method='loess',formula=y~x,se=T,alpha=0,linetype="dotted",size=0.4,col="#40B0A6")+
+  ylab(expression(Mean~MAF))+
+  xlab(expression(Null~quantile))
+  #scale_y_continuous(breaks=seq(0, 0.2, by=0.01), limits=c(0.085, 0.105))
