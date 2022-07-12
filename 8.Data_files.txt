@@ -4,6 +4,79 @@
 ## Fst_Data.txt 
 ##############################
 
+ID: SNP ID
+CHROM: Chromosome number
+REF.x: Reference allele
+ALT.x: Alternative allele
+CT_TOT_F: Sample size of individuals (females)
+HET_F: Heterozygous count (females)
+HOM_ALT_F: Homozygous alternative count (females)
+M_HOM_REF_F: Homozygous reference count among projected offspring (females)
+M_HET_F: Heterozygous count among projected offspring (females)
+M_HOM_ALT_F: Homozygous alternative count among projected offspring (females)
+CT_TOT_F: Sample size of individuals (males)
+HET_M: Heterozygous count (males)
+HOM_ALT_M: Homozygous alternative count (males)
+M_HOM_REF_M: Homozygous reference count among projected offspring (males)
+M_HET_M: Heterozygous count among projected offspring (males)
+M_HOM_ALT_M: Homozygous alternative count among projected offspring (males)
+p_F_VIABILITY: Reference allele frequency (females)
+p_M_VIABILITY: Reference allele frequency (males)
+FST_VIABILITY: Adult Fst
+p_F: Reference allele frequency in projected gametes (females)
+p_M: Reference allele frequency in projected gametes (males)
+FST_GAMETIC: Gametic Fst
+MAF: Minor allele frequency
+p_F_PERM: Reference allele frequency in projected gametes (females, permuted LRS)
+p_M_PERM: Reference allele frequency in projected gametes (males, permuted LRS)
+CT_TOT_F_PERM2: Sample size of individuals (females, permuted)
+CT_TOT_M_PERM2: Sample size of individuals (males, permuted)
+p_F_VIABILITY_PERM2: Reference allele frequency (females, permuted)
+p_M_VIABILITY_PERM2: Reference allele frequency (males, permuted)
+FST_VIABILITY_PERM2: Adult Fst (permuted)
+p_F_PERM2: Reference allele frequency in projected gametes (females, permuted)
+p_M_PERM2: Reference allele frequency in projected gametes (males, permuted)
+FST_GAMETIC_PERM2: Gametic Fst (permuted)
+VAR_LRS_F: Variance in LRS (females)
+MEANSQ_LRS_F: Mean^2 LRS (females)
+VAR_LRS_M: Variance in LRS (males)
+MEANSQ_LRS_M: Mean^2 LRS (males)
+VAR_LRS_PERM2_F: Variance in LRS (females, permuted)
+MEANSQ_LRS_PERM2_F: Mean^2 LRS (females, permuted)
+VAR_LRS_PERM2_M: Variance in LRS (males, permuted)
+MEANSQ_LRS_PERM2_M: Mean^2 LRS (males, permuted)
+POS: SNP Position
+FIS_F: FIS estimate in females
+FIS_F: FIS estimate in males
+MAF_PERM2: Minor allele frequency (permuted)
+RANDOM_CHISQ: One random sample from a chi-square distribution with size=nloci
+FST_VIABILITY_THEORY: Distribution of adult Fst under the theoretical null (single sample with size=nloci)
+FST_VIABILITY_ST: Standardised adult Fst 
+FST_VIABILITY_PERM2_ST: Standardised adult Fst (permuted)
+FST_VIABILITY_P: P-values for adult Fst (based on chi-square null)
+FST_VIABILITY_Q: FDR Q-values for adult Fst based on P-value distribution
+FST_GAMETIC_THEORY: Distribution of gametic Fst under the theoretical null (single sample with size=nloci)
+FST_GAMETIC_ST: Standardised gametic Fst 
+FST_GAMETIC_PERM2_ST: Standardised gametic Fst (permuted)
+FST_GAMETIC_P: P-values for gametic Fst (based on chi-square null)
+FST_GAMETIC_Q: FDR Q-values for gametic Fst based on P-value distribution
+FST_REPRODUCTIVE_THEORY: Distribution of reproductive Fst under the theoretical null (single sample with size=nloci)
+FST_REPRODUCTIVE: Reproductive Fst
+FST_REPRODUCTIVE_ST: Standardised reproductive Fst
+FST_REPRODUCTIVE_PERM: Reproductive Fst (permuted LRS)
+FST_REPRODUCTIVE_PERM_ST: Standardised reproductive Fst (permuted LRS)
+FST_REPRODUCTIVE_P: P-values for reprouctive Fst (based on chi-square null)
+FST_REPRODUCTIVE_Q: Q-values for reproductive Fst based on P-value distribution
+UNFOLDED_FST: Unfolded reproductive Fst
+UNFOLDED_FST_PERM: Unfolded reproductive Fst (permuted LRS)
+UNFOLDED_FST_THEORY: Distribution of unfolded reproductive Fst under the theoretical null (single sample with size=nloci)
+Bitarello_candidate: Binary variable denoting whether SNP falls within a candidate for balancing selection identified by Bitarello et al. 2018
+Andres_candidate: Binary variable denoting whether SNP falls within a candidate for balancing selection identified by Andres et al. 2009
+DeGiorgio_candidate: Binary variable denoting whether SNP falls within a candidate for balancing selection identified by DeGiorgio et al. 2014
+AgeMedian_Jnt_definitive: Median allele age of the alternative allele
+AlleleAlt_Freq: Alternative allele frequency
+FST_GIH_YRI: Fst between GIH population and YRI population
+
 
 ##############################
 ## Lst_Data.txt
