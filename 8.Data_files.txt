@@ -82,12 +82,67 @@ FST_GIH_YRI: Fst between GIH population and YRI population
 ## Lst_Data.txt
 ##############################
 
-
+ID: SNP ID
+CHROM: Chromosome number
+POS: SNP position
+REF.x: Reference allele
+ALT.x: Alternative allele
+REF_FREQ: Reference allele frequency
+BETA: Effect size estimate (log odds ratio)
+SE: Standard error for effect size estimate
+P_BOLT_LMM_INF: P-value for effect size estimate
+REF_FREQ_PERM2: Reference allele frequency (permuted)
+BETA_PERM2: Effect size estimate (log odds ratio), permuted
+SE_PERM2: Standard error for effect size estimate (permuted)
+P_BOLT_LMM_INF_PERM2: P-value for effect size estimate (permuted)
+MAF: Minor allele frequency
+MAF_PERM2: Minor allele frequency (permuted)
+LST: Lst estimate
+LST_PERM2: Lst estimate (permuted)
+Bitarello_candidate: Binary variable denoting whether SNP falls within a candidate for balancing selection identified by Bitarello et al. 2018
+Andres_candidate: Binary variable denoting whether SNP falls within a candidate for balancing selection identified by Andres et al. 2009
+DeGiorgio_candidate: Binary variable denoting whether SNP falls within a candidate for balancing selection identified by DeGiorgio et al. 2014
+AgeMedian_Jnt_definitive: Median allele age of the alternative allele
+AlleleAlt_Freq: Alternative allele frequency
+FST_GIH_YRI: Fst between GIH population and YRI population
 
 ##############################
 ## T_Data.txt
 ##############################
 
+ID: SNP ID
+CHROM: Chromosome number
+POS: SNP position
+REF.x: Reference allele
+ALT.x: Alternative allele
+REF_FREQ_M: Reference allele frequency (males)
+BETA_M: Effect size estimate (log odds ratio) (males)
+SE_M: Standard error for effect size estimate (males)
+P_BOLT_LMM_INF_M: P-value for effect size estimate (males)
+REF_FREQ_F: Reference allele frequency (females)
+BETA_F: Effect size estimate (log odds ratio) (females)
+SE_F: Standard error for effect size estimate (females)
+P_BOLT_LMM_INF_F: P-value for effect size estimate (females)
+REF_FREQ_M_PERM: Reference allele frequency (males, permuted LRS)
+BETA_M_PERM: Effect size estimate (log odds ratio) (males, permuted LRS)
+SE_M_PERM: Standard error for effect size estimate (males, permuted LRS)
+P_BOLT_LMM_INF_M_PERM: P-value for effect size estimate (males, permuted LRS)
+REF_FREQ_F_PERM: Reference allele frequency (females, permuted LRS)
+BETA_F_PERM: Effect size estimate (log odds ratio) (females, permuted LRS)
+SE_F_PERM: Standard error for effect size estimate (females, permuted LRS)
+P_BOLT_LMM_INF_F_PERM: P-value for effect size estimate (females, permuted LRS)
+MAF: Minor allele frequency
+MAF_PERM2: Minor allele frequency (permuted)
+ABS_T: |t| estimate
+ABS_T_PERM: |t| estimate (permuted LRS)
+UNFOLDED_T: t estimate
+UNFOLDED_T_PERM: t estimate (permuted LRS)
+Bitarello_candidate: Binary variable denoting whether SNP falls within a candidate for balancing selection identified by Bitarello et al. 2018
+Andres_candidate: Binary variable denoting whether SNP falls within a candidate for balancing selection identified by Andres et al. 2009
+DeGiorgio_candidate: Binary variable denoting whether SNP falls within a candidate for balancing selection identified by DeGiorgio et al. 2014
+AgeMedian_Jnt_definitive: Median allele age of the alternative allele
+AlleleAlt_Freq: Alternative allele frequency
+FST_GIH_YRI: Fst between GIH population and YRI population
 
 ##############################
 ## partitions.*
