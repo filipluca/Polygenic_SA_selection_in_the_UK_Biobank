@@ -3,7 +3,7 @@
 
 Welcome!
 
-This page contains the code underlying analyses and figures presented in 'Polygenic signals of sex differences in selection in contemorary humans' (Ruzicka et al. 2022, bioRxiv). 
+This page contains the code underlying analyses and figures presented in 'Polygenic signals of sex differences in selection in contemporary humans' (Ruzicka et al. 2022, bioRxiv). 
 
 The code is organised into text files 1-8, which approximately follow the order of the analyses presented in the manuscript. I used a mixture of R and bash scripts, so it is usually necessary to go back and forth between these two sets of scripts to replicate a given analysis. The contents of each file are described in bullet-point form below. I have also annotated the code for clarity, but if it's insufficiently clear please e-mail me at filip.ruzicka [at] monash.edu. See also https://github.com/lukeholman/UKBB_LDSC for some further code/output pertaining to functional analyses in the manuscript
 
