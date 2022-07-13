@@ -1,5 +1,7 @@
 ## Here follow descriptions of data files uploaded to the zenodo repository
 
+## Please note that these datafiles were constructed for the purpose of easier use for other researchers. They don't exactly match the R objects used in the code, which are typically subsets of these larger dataframes. For example, "Fst_Data.txt" contains some non-overlapping with the "mf.frqs" object used in Fst analyses. Nonetheless, the analyses and figures presented in the manuscript should be replicable using these composite tables. 
+
 ##############################
 ## Fst_Data.txt 
 ##############################
