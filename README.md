@@ -7,7 +7,7 @@ This page contains the code underlying analyses and figures presented in 'Polyge
 
 The code is organised into text files 1-8, which approximately follow the order of the analyses presented in the manuscript. I used a mixture of R and bash scripts, so it is usually necessary to go back and forth between these two sets of scripts to replicate a given analysis. The contents of each file are described in bullet-point form below. I have also annotated the code for clarity, but if it's insufficiently clear please e-mail me at filip.ruzicka [at] monash.edu. See also https://github.com/lukeholman/UKBB_LDSC for some further code/output pertaining to functional analyses in the manuscript
 
-The 8th text file contains more detailed descriptions of the datafiles shared on zenodo (https://zenodo.org/record/XXXXXXX). These zenodo datafiles contain the raw data used to produce the figures in the manuscript, and will be the most useful objects for future users.
+The 8th text file contains more detailed descriptions of the datafiles shared on zenodo (https://zenodo.org/record/6824671). These zenodo datafiles contain  metadata used to produce the figures in the manuscript, and will be the most useful objects for future users.
 
 
 #### 1. Downloading UK Biobank data
