@@ -18,7 +18,7 @@ The 8th text file contains more detailed descriptions of the datafiles shared on
 
 -Implement basic sample-level and site-level quality controls (see relevant code from file #3)
 
--LD prune and extract top PCs
+-LD prune and extract top PCs (incl specific scripts for running the code on the cluster)
 
 #### 3. Phenotypic filtering
 
@@ -34,7 +34,7 @@ The 8th text file contains more detailed descriptions of the datafiles shared on
 
 -Calculate Fst
 
--Run GWAS analysis in BOLT-LMM
+-Run GWAS analysis in BOLT-LMM (incl specific scripts for running the code on the cluster)
 
 #### 5. Fst and GWAS data analysis
 
