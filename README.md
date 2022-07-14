@@ -67,3 +67,7 @@ The 8th text file contains more detailed descriptions of the datafiles shared on
 #### 8. Data files
 
 -Description of summary data files uploaded to zenodo
+
+#### Supplementary
+
+-Code used to generate Supplementary Figures (section D), on the covariance between Fst and MAF
