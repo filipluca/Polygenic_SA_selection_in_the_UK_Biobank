@@ -1,4 +1,4 @@
-# Polygenic signals of sex differences in selection in the UK Biobank
+# Polygenic signals of sex differences in selection in humans from the UK Biobank
 
 
 Welcome!
