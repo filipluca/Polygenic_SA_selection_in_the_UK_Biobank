@@ -150,8 +150,11 @@ FST_GIH_YRI: Fst between GIH population and YRI population
 ## partitions.*
 ##############################
 
-
+For each metric of sex-differential selection, output of LDSC partitioning. 
+Note that file such as "partitions.unfoldedfstneg.*" and "partitions.unfoldedfstneg.*" represent values of unfolded Fst/t which are negative (and potentially SA) or positive (and potentially SC), respectively.
 
 ##############################
 ## PASS_*
 ##############################
+
+For each metric of sex-differential selection, *.sumstats files. These are needed to compute genetic correlations between metrics of sex-differential selection and any trait of interest. See LDSC documentation for a more detailed description of ".sumstats" file, and see Luke Holman's github repository for the code used to compute genetic correlations.
